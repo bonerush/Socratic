@@ -33,13 +33,16 @@ export class SocraticSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName('API key')
       .setDesc('Your API key for the LLM service.')
-      .addText(text => text
-        .setPlaceholder('sk-...')
-        .setValue(this.plugin.settings.apiKey)
-        .onChange(async value => {
-          this.plugin.settings.apiKey = value;
-          await this.plugin.saveSettings();
-        }));
+      .addText(text => {
+        text.inputEl.type = 'password';
+        text
+          .setPlaceholder('sk-...')
+          .setValue(this.plugin.settings.apiKey)
+          .onChange(async value => {
+            this.plugin.settings.apiKey = value;
+            await this.plugin.saveSettings();
+          });
+      });
 
     new Setting(containerEl)
       .setName('Model')

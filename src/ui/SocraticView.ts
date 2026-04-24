@@ -2,6 +2,7 @@ import { ItemView, WorkspaceLeaf } from 'obsidian';
 import { VIEW_TYPE_SOCRATIC } from '../types';
 import type { TutorMessage, SessionState, SelfAssessmentLevel } from '../types';
 import type SocraticNoteTutorPlugin from '../main';
+import { generateId } from '../utils/helpers';
 
 export class SocraticView extends ItemView {
   private plugin: SocraticNoteTutorPlugin;
@@ -41,6 +42,10 @@ export class SocraticView extends ItemView {
     this.buildMessagesArea(container);
     this.buildInputArea(container);
     this.buildActionButtons(container);
+  }
+
+  async onClose(): Promise<void> {
+    this.messagesEl.empty();
   }
 
   private buildHeader(container: HTMLElement): void {
@@ -124,7 +129,7 @@ export class SocraticView extends ItemView {
 
     this.inputArea.value = '';
     this.addMessage({
-      id: crypto.randomUUID(),
+      id: generateId(),
       role: 'user',
       type: 'answer',
       content: text,
@@ -139,7 +144,7 @@ export class SocraticView extends ItemView {
       await this.plugin.processUserResponse(text);
     } catch (error) {
       this.addMessage({
-        id: crypto.randomUUID(),
+        id: generateId(),
         role: 'tutor',
         type: 'system',
         content: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -183,7 +188,7 @@ export class SocraticView extends ItemView {
     if (this.isProcessing) return;
 
     this.addMessage({
-      id: crypto.randomUUID(),
+      id: generateId(),
       role: 'user',
       type: 'choice-result',
       content: option,
@@ -294,7 +299,7 @@ export class SocraticView extends ItemView {
 
   showError(message: string): void {
     this.addMessage({
-      id: crypto.randomUUID(),
+      id: generateId(),
       role: 'tutor',
       type: 'system',
       content: message,

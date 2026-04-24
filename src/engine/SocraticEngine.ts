@@ -42,9 +42,11 @@ export class SocraticEngine {
     this.promptBuilder = new PromptBuilder();
   }
 
-  async stepDiagnosis(session: SessionState): Promise<TutorMessage> {
+  async stepDiagnosis(session: SessionState, round = 1): Promise<TutorMessage> {
     const systemPrompt = this.promptBuilder.buildSystemPrompt(session.noteContent);
-    const diagnosisPrompt = this.promptBuilder.buildDiagnosisPrompt();
+    const diagnosisPrompt = round === 1
+      ? this.promptBuilder.buildDiagnosisPrompt()
+      : 'Based on the student\'s previous answer, ask a follow-up diagnostic question to better understand their knowledge level. Focus on areas where their understanding seems unclear.';
     const messages = this.buildConversationContext(session);
 
     const response = await this.llm.chat(systemPrompt, [
@@ -112,7 +114,7 @@ export class SocraticEngine {
     return this.buildTutorMessageFromParsed(parsed);
   }
 
-  async stepMasteryCheck(session: SessionState, conceptId: string): Promise<TutorMessage> {
+  async stepMasteryCheck(session: SessionState, conceptId: string): Promise<{ message: TutorMessage; dimensions: MasteryDimension }> {
     const systemPrompt = this.promptBuilder.buildSystemPrompt(session.noteContent);
     const concept = session.concepts.find(c => c.id === conceptId);
     if (!concept) throw new Error(`Concept ${conceptId} not found`);
@@ -126,7 +128,15 @@ export class SocraticEngine {
     ]);
 
     const parsed = this.parseResponse(response.content);
-    return this.buildTutorMessageFromParsed(parsed);
+    const message = this.buildTutorMessageFromParsed(parsed);
+    const dimensions: MasteryDimension = parsed.masteryCheck || {
+      correctness: false,
+      explanationDepth: false,
+      novelApplication: false,
+      conceptDiscrimination: false,
+    };
+
+    return { message, dimensions };
   }
 
   async stepPracticeTask(session: SessionState, conceptId: string): Promise<TutorMessage> {
@@ -225,7 +235,7 @@ Make it concrete and specific to this concept.`;
   private buildConversationContext(session: SessionState): { role: 'user' | 'assistant'; content: string }[] {
     const recentMessages = session.messages.slice(-10);
     return recentMessages.map(m => ({
-      role: m.role === 'tutor' ? 'assistant' : 'user' as 'user' | 'assistant',
+      role: (m.role === 'tutor' ? 'assistant' : 'user') as 'user' | 'assistant',
       content: m.content,
     }));
   }

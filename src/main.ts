@@ -160,8 +160,15 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     if (!this.session) return;
     const roadmapPath = `${this.sessionManager.getSessionDir(this.session.noteSlug)}/roadmap.html`;
     try {
-      await this.app.vault.adapter.exists(roadmapPath);
-      window.open(roadmapPath);
+      const exists = await this.app.vault.adapter.exists(roadmapPath);
+      if (!exists) {
+        new Notice('Roadmap not yet generated. Start a tutoring session first.');
+        return;
+      }
+      const vaultPath = this.app.vault.getRoot().path
+        ? `${this.app.vault.getRoot().path.replace(/\/$/, '')}/${roadmapPath}`
+        : roadmapPath;
+      window.open(`file://${vaultPath}`);
     } catch {
       new Notice('Roadmap not yet generated. Start a tutoring session first.');
     }
@@ -179,7 +186,15 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     await this.continueTutoring();
   }
 
-  async processChoiceSelection(_option: string, _index: number): Promise<void> {
+  async processChoiceSelection(option: string, _index: number): Promise<void> {
+    if (!this.session) return;
+    this.session.messages.push({
+      id: generateId(),
+      role: 'user',
+      type: 'choice-result',
+      content: option,
+      timestamp: Date.now(),
+    });
     await this.continueTutoring();
   }
 
@@ -266,7 +281,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     }
   }
 
-  private async extractConceptsAndBuildRoadmap(): Promise<void> {
+  private async extractConceptsAndBuildRoadmap(recursionDepth = 0): Promise<void> {
     if (!this.session) return;
     const view = this.getView();
     if (!view) return;
@@ -313,22 +328,41 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       await this.sessionManager.saveSession(this.session!.noteSlug, this.session!);
 
       // Continue to first concept
-      await this.continueTutoring();
+      await this.continueTutoring(recursionDepth + 1);
     } catch (error) {
       view.showError(`Failed to analyze concepts: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
-  private async continueTutoring(): Promise<void> {
+  private async continueTutoring(recursionDepth = 0): Promise<void> {
+    if (recursionDepth > 5) {
+      console.warn('Tutoring loop exceeded max recursion depth, forcing return.');
+      return;
+    }
     if (!this.session) return;
     const view = this.getView();
     if (!view) return;
 
     try {
-      // Phase 1: If concepts not extracted yet, extract them
+      // Phase 1: Diagnosis phase — complete 2 rounds before extracting concepts
       if (this.session.concepts.length === 0) {
-        await this.extractConceptsAndBuildRoadmap();
-        // After extraction, continueTutoring will be called again
+        const tutorQuestions = this.session.messages.filter(
+          m => m.role === 'tutor' && (m.type === 'question' || m.type === 'feedback')
+        ).length;
+        const userAnswers = this.session.messages.filter(
+          m => m.role === 'user'
+        ).length;
+
+        const diagnosisRound = tutorQuestions + 1;
+        if (diagnosisRound < 2 || userAnswers < tutorQuestions) {
+          const msg = await this.engine.stepDiagnosis(this.session, diagnosisRound);
+          this.session.messages.push(msg);
+          view.addMessage(msg);
+          await this.sessionManager.saveSession(this.session.noteSlug, this.session);
+          return;
+        }
+
+        await this.extractConceptsAndBuildRoadmap(recursionDepth);
         return;
       }
 
@@ -360,13 +394,13 @@ export default class SocraticNoteTutorPlugin extends Plugin {
 
       if (!currentConcept) {
         this.session.currentConceptId = null;
-        await this.continueTutoring();
+        await this.continueTutoring(recursionDepth + 1);
         return;
       }
 
       if (currentConcept.status === 'mastered') {
         this.session.currentConceptId = null;
-        await this.continueTutoring();
+        await this.continueTutoring(recursionDepth + 1);
         return;
       }
 
@@ -406,22 +440,11 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     const concept = this.session.concepts.find(c => c.id === conceptId);
     if (!concept) return;
 
-    const msg = await this.engine.stepMasteryCheck(this.session, conceptId);
+    const { message: msg, dimensions } = await this.engine.stepMasteryCheck(this.session, conceptId);
     this.session.messages.push(msg);
     view.addMessage(msg);
 
     const selfAssessment = await view.showSelfAssessment();
-
-    const dimensions: MasteryDimension = {
-      correctness: true,
-      explanationDepth: true,
-      novelApplication: false,
-      conceptDiscrimination: false,
-    };
-
-    if (msg.question?.options && msg.question.correctOptionIndex !== undefined) {
-      // LLM already scored dimensions
-    }
 
     const { passed, newScore } = this.engine.updateMasteryFromCheck(
       this.session, conceptId, dimensions, selfAssessment
@@ -524,9 +547,21 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     await this.sessionManager.saveSummary(slug, finalSummaryHtml, true);
   }
 
+  private escapeHtml(text: string): string {
+    const map: Record<string, string> = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#x27;',
+    };
+    return text.replace(/[&<>"']/g, c => map[c] || c);
+  }
+
   private generateRoadmapHtml(): string {
     if (!this.session) return '';
     const s = this.session;
+    const escapedTitle = this.escapeHtml(s.noteTitle);
 
     let conceptsHtml = '';
     for (const c of s.concepts) {
@@ -545,7 +580,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Learning Roadmap — ${s.noteTitle}</title>
+  <title>Learning Roadmap — ${escapedTitle}</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #fff; color: #333; }
     h1 { color: #1a1a1a; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px; }
@@ -561,7 +596,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
   </style>
 </head>
 <body>
-  <h1>Learning Roadmap: ${s.noteTitle}</h1>
+  <h1>Learning Roadmap: ${escapedTitle}</h1>
   <p>Started: ${new Date(s.createdAt).toLocaleDateString()} | Last updated: ${new Date(s.updatedAt).toLocaleDateString()}</p>
   <div class="progress-bar"><div class="progress-fill" style="width:${s.concepts.length > 0 ? (s.concepts.filter(c => c.status === 'mastered').length / s.concepts.length * 100) : 0}%"></div></div>
   <div class="legend">
@@ -584,11 +619,13 @@ export default class SocraticNoteTutorPlugin extends Plugin {
   private generateSummaryHtml(isFinal: boolean): string {
     if (!this.session) return '';
     const s = this.session;
+    const escapedTitle = this.escapeHtml(s.noteTitle);
 
     let conceptsHtml = '';
     for (const c of s.concepts) {
+      const escapedName = this.escapeHtml(c.name);
       conceptsHtml += `<tr>
-        <td>${c.name}</td>
+        <td>${escapedName}</td>
         <td>${c.status}</td>
         <td>${c.masteryScore}%</td>
         <td>${c.lastReviewTime ? new Date(c.lastReviewTime).toLocaleDateString() : '-'}</td>
@@ -608,7 +645,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${isFinal ? 'Final Summary' : 'Progress Summary'} — ${s.noteTitle}</title>
+  <title>${isFinal ? 'Final Summary' : 'Progress Summary'} — ${escapedTitle}</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #fff; color: #333; }
     h1 { color: #1a1a1a; border-bottom: 2px solid #e0e0e0; padding-bottom: 8px; }
@@ -622,7 +659,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
   </style>
 </head>
 <body>
-  <h1>${isFinal ? 'Final Summary' : 'Progress Summary'}: ${s.noteTitle}</h1>
+  <h1>${isFinal ? 'Final Summary' : 'Progress Summary'}: ${escapedTitle}</h1>
   <p>Session ${isFinal ? 'completed' : 'in progress'} | Started: ${new Date(s.createdAt).toLocaleDateString()}</p>
 
   <h2>Concepts</h2>
