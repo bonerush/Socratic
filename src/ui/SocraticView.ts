@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, Notice } from 'obsidian';
+import { ItemView, WorkspaceLeaf, Notice, MarkdownRenderer } from 'obsidian';
 import { VIEW_TYPE_SOCRATIC } from '../types';
 import type { TutorMessage, SessionState, SelfAssessmentLevel } from '../types';
 import type SocraticNoteTutorPlugin from '../main';
@@ -206,14 +206,26 @@ export class SocraticView extends ItemView {
 
     // User messages and system errors appear instantly; tutor messages stream in
     if (message.role === 'user' || message.type === 'system') {
-      contentEl.textContent = message.content;
+      this.renderMarkdown(message.content, contentEl);
       this.addOptionsIfNeeded(msgEl, message);
       this.scrollToBottom();
     } else {
       this.streamText(contentEl, message.content, () => {
-        this.addOptionsIfNeeded(msgEl, message);
-        this.scrollToBottom();
+        // Re-render as markdown after streaming completes
+        this.renderMarkdown(message.content, contentEl).then(() => {
+          this.addOptionsIfNeeded(msgEl, message);
+          this.scrollToBottom();
+        });
       });
+    }
+  }
+
+  private async renderMarkdown(content: string, containerEl: HTMLElement): Promise<void> {
+    try {
+      containerEl.empty();
+      await MarkdownRenderer.render(this.app, content, containerEl, '', this);
+    } catch {
+      containerEl.textContent = content;
     }
   }
 
