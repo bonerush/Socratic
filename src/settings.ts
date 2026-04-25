@@ -3,9 +3,6 @@ import type SocraticNoteTutorPlugin from './main';
 import { DEFAULT_SETTINGS, type SocraticPluginSettings } from './types';
 import { getTranslations, resolveLang, type Lang } from './i18n/translations';
 
-export { DEFAULT_SETTINGS };
-export type { SocraticPluginSettings };
-
 export class SocraticSettingTab extends PluginSettingTab {
   plugin: SocraticNoteTutorPlugin;
   private t = getTranslations('en');
@@ -72,19 +69,7 @@ export class SocraticSettingTab extends PluginSettingTab {
         .onChange(async value => {
           this.plugin.settings.language = value;
           await this.plugin.saveSettings();
-
-          // Resolve language: if 'auto', detect from active note content
-          let resolvedLang: Lang;
-          if (value === 'zh') {
-            resolvedLang = 'zh';
-          } else if (value === 'en') {
-            resolvedLang = 'en';
-          } else {
-            resolvedLang = resolveLang(value, this.getActiveNoteContent());
-          }
-          this.plugin.updateViewLanguage(resolvedLang);
-
-          // Re-render settings tab with new language
+          this.plugin.updateViewLanguage(resolveLang(value, this.getActiveNoteContent()));
           this.display();
         }));
 
@@ -125,9 +110,7 @@ export class SocraticSettingTab extends PluginSettingTab {
   }
 
   private updateTranslations(): void {
-    const setting = this.plugin.settings.language;
-    const lang: Lang = setting === 'zh' ? 'zh' : setting === 'en' ? 'en' : resolveLang(setting, this.getActiveNoteContent());
-    this.t = getTranslations(lang);
+    this.t = getTranslations(resolveLang(this.plugin.settings.language, this.getActiveNoteContent()));
   }
 
   private getActiveNoteContent(): string {

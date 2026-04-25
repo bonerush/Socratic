@@ -1,4 +1,4 @@
-import { type SessionState, type TutorMessage, type Question, type ConceptState, type MisconceptionRecord, type SelfAssessmentLevel, type MasteryDimension } from '../types';
+import { type SessionState, type TutorMessage, type Question, type ConceptState, type SelfAssessmentLevel, type MasteryDimension } from '../types';
 import { LLMService } from '../llm/LLMService';
 import { PromptBuilder } from '../llm/PromptBuilder';
 import { TOOLS, type ToolCall, type ToolName, type MultipleChoiceArgs, type GuidanceArgs, type MasteryCheckArgs, type ConceptExtractionArgs, type InfoArgs } from '../llm/tools';
@@ -63,7 +63,7 @@ export class SocraticEngine {
     ], 0.7, 2000, TOOLS);
 
     const parsed = this.parseStructuredResponse(response);
-    return this.buildTutorMessage(parsed, 'question');
+    return this.buildTutorMessageFromParsed(parsed);
   }
 
   async stepExtractConcepts(session: SessionState): Promise<{ concepts: { id: string; name: string; description: string; dependencies: string[] }[] }> {
@@ -102,23 +102,6 @@ export class SocraticEngine {
     const prompt = currentConcept
       ? `Continue tutoring the concept "${currentConcept.name}". Based on the conversation so far, ask the next appropriate question. Remember: never give answers, only guide.`
       : 'Continue the tutoring session with appropriate Socratic questions based on the conversation so far.';
-
-    const messages = this.buildConversationContext(session);
-    const response = await this.llm.chat(systemPrompt, [
-      ...messages,
-      { role: 'user', content: prompt },
-    ], 0.7, 2000, TOOLS);
-
-    const parsed = this.parseStructuredResponse(response);
-    return this.buildTutorMessageFromParsed(parsed);
-  }
-
-  async stepProcessAnswer(session: SessionState, userAnswer: string): Promise<TutorMessage> {
-    const systemPrompt = this.promptBuilder.buildSystemPrompt(session.noteContent, undefined, this.language);
-    const currentConcept = session.concepts.find(c => c.id === session.currentConceptId);
-    const prompt = currentConcept
-      ? `The student answered: "${userAnswer}"\n\nAnalyze their answer for concept "${currentConcept.name}". Provide appropriate Socratic response based on answer quality. If they're correct, ask a harder follow-up. If partially correct, give a small hint. If wrong, present a counterexample. If they say "I don't know", break it down into smaller sub-questions.`
-      : `The student answered: "${userAnswer}"\n\nRespond appropriately with a Socratic follow-up.`;
 
     const messages = this.buildConversationContext(session);
     const response = await this.llm.chat(systemPrompt, [
@@ -207,45 +190,6 @@ Make it concrete and specific to this concept.`;
 
     const passed = concept.masteryScore >= 80;
     return { passed, newScore: concept.masteryScore };
-  }
-
-  addMisconception(session: SessionState, conceptId: string, misconception: string, rootCause: string): MisconceptionRecord {
-    const record: MisconceptionRecord = {
-      id: generateId(),
-      conceptId,
-      misconception,
-      inferredRootCause: rootCause,
-      resolved: false,
-      resolvedDate: null,
-      userExplanation: null,
-    };
-    session.misconceptions.push(record);
-    return record;
-  }
-
-  resolveMisconception(session: SessionState, misconceptionId: string): boolean {
-    const record = session.misconceptions.find(m => m.id === misconceptionId);
-    if (!record || record.resolved) return false;
-    record.resolved = true;
-    record.resolvedDate = Date.now();
-    return true;
-  }
-
-  updateReviewInterval(concept: ConceptState, correct: boolean): number {
-    if (correct) {
-      concept.reviewInterval = Math.min(
-        concept.reviewInterval * 2,
-        2764800
-      );
-    } else {
-      concept.reviewInterval = 86400;
-    }
-    return concept.reviewInterval;
-  }
-
-  calculateNextReviewInterval(concept: ConceptState): number {
-    if (concept.reviewInterval === 0) return 86400;
-    return Math.min(concept.reviewInterval * 2, 2764800);
   }
 
   private buildConversationContext(session: SessionState): { role: 'user' | 'assistant'; content: string }[] {
@@ -394,19 +338,6 @@ Make it concrete and specific to this concept.`;
       type,
       content,
       question,
-      timestamp: Date.now(),
-    };
-  }
-
-  private buildTutorMessage(parsed: LLMStructuredResponse, fallbackType: TutorMessage['type']): TutorMessage {
-    if (parsed.tool) {
-      return this.buildTutorMessageFromParsed(parsed);
-    }
-    return {
-      id: generateId(),
-      role: 'tutor',
-      type: fallbackType,
-      content: parsed.content || '',
       timestamp: Date.now(),
     };
   }

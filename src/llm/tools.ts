@@ -33,11 +33,6 @@ export interface MultipleChoiceArgs {
   conceptId?: string;
 }
 
-export interface OpenEndedArgs {
-  content: string;
-  conceptId?: string;
-}
-
 export interface GuidanceArgs {
   content: string;
   misconception?: string;
@@ -67,14 +62,6 @@ export interface InfoArgs {
   content: string;
   conceptId?: string;
 }
-
-export type ToolArgs =
-  | MultipleChoiceArgs
-  | OpenEndedArgs
-  | GuidanceArgs
-  | MasteryCheckArgs
-  | ConceptExtractionArgs
-  | InfoArgs;
 
 export const TOOLS: ToolDefinition[] = [
   {
@@ -242,10 +229,6 @@ export const TOOLS: ToolDefinition[] = [
 ];
 
 export type ToolName = (typeof TOOLS)[number]['function']['name'];
-
-export function getToolNames(): string[] {
-  return TOOLS.map(t => t.function.name);
-}
 
 export function getToolDescriptions(): string {
   return TOOLS.map(t => {

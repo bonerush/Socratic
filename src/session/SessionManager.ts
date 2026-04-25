@@ -1,6 +1,6 @@
 import { type Vault, type TFile, normalizePath } from 'obsidian';
 import { SESSION_DIR, type SessionState, type LearnerProfile, type ConceptState, type MisconceptionRecord } from '../types';
-import { generateId, slugify } from '../utils/helpers';
+import { slugify } from '../utils/helpers';
 
 export class SessionManager {
   private vault: Vault;
@@ -63,21 +63,6 @@ export class SessionManager {
     await this.vault.adapter.write(path, content);
   }
 
-  async conceptMapExists(noteSlug: string, index: number): Promise<boolean> {
-    const dir = `${this.getSessionDir(noteSlug)}/concept-map`;
-    try {
-      return await this.vault.adapter.exists(`${dir}/concept-map-${index}.html`);
-    } catch {
-      return false;
-    }
-  }
-
-  async saveConceptMap(noteSlug: string, index: number, html: string): Promise<void> {
-    const dir = `${this.getSessionDir(noteSlug)}/concept-map`;
-    await this.ensureDir(dir);
-    await this.vault.adapter.write(`${dir}/concept-map-${index}.html`, html);
-  }
-
   async saveRoadmap(noteSlug: string, html: string): Promise<void> {
     const dir = this.getSessionDir(noteSlug);
     await this.ensureDir(dir);
@@ -89,12 +74,6 @@ export class SessionManager {
     await this.ensureDir(dir);
     const filename = isFinal ? 'summary-final.html' : 'summary.html';
     await this.vault.adapter.write(`${dir}/${filename}`, html);
-  }
-
-  async saveVisual(noteSlug: string, name: string, content: string): Promise<void> {
-    const dir = `${this.getSessionDir(noteSlug)}/visuals`;
-    await this.ensureDir(dir);
-    await this.vault.adapter.write(`${dir}/${name}`, content);
   }
 
   async deleteSession(noteSlug: string): Promise<void> {

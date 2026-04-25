@@ -1,16 +1,13 @@
 import { Plugin, WorkspaceLeaf, Notice, MarkdownView } from 'obsidian';
-import { DEFAULT_SETTINGS, SocraticSettingTab, type SocraticPluginSettings } from './settings';
+import { SocraticSettingTab } from './settings';
 import { SocraticView } from './ui/SocraticView';
 import { SessionManager } from './session/SessionManager';
 import { LLMService } from './llm/LLMService';
 import { SocraticEngine } from './engine/SocraticEngine';
 import {
-  VIEW_TYPE_SOCRATIC,
-  type SessionState,
-  type ConceptState,
-  type SelfAssessmentLevel,
-  type MasteryDimension,
-  type TutorMessage,
+  VIEW_TYPE_SOCRATIC, DEFAULT_SETTINGS,
+  type SessionState, type ConceptState,
+  type SelfAssessmentLevel, type MasteryDimension, type TutorMessage, type SocraticPluginSettings,
 } from './types';
 import { generateId, slugify } from './utils/helpers';
 import { getTranslations, resolveLang, type Lang } from './i18n/translations';

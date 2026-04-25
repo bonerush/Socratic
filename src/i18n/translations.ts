@@ -4,11 +4,9 @@ export interface TranslationMap {
   viewTitle: string;
   viewStatusReady: string;
   noActiveSession: string;
-  noActiveConcept: string;
   startTutoring: string;
   viewRoadmap: string;
   newSession: string;
-  send: string;
   inputPlaceholder: string;
   welcomeMessage: string;
   thinking: string;
@@ -27,7 +25,6 @@ export interface TranslationMap {
   emptyNote: string;
   noRoadmap: string;
   dueForReview: string;
-  errorPrefix: string;
   masteryCheckFailed: string;
   practiceFailed: string;
   reviewFailed: string;
@@ -65,11 +62,9 @@ const en: TranslationMap = {
   viewTitle: 'Socratic Tutor',
   viewStatusReady: 'Ready',
   noActiveSession: 'No active session',
-  noActiveConcept: 'No active concept',
   startTutoring: 'Start Tutoring',
   viewRoadmap: 'View Roadmap',
   newSession: 'New Session',
-  send: 'Send',
   inputPlaceholder: 'Type your answer here...',
   welcomeMessage: 'Open a note and click "Start Tutoring" to begin.',
   thinking: 'Thinking',
@@ -88,7 +83,6 @@ const en: TranslationMap = {
   emptyNote: 'The current note is empty. Please write some content first.',
   noRoadmap: 'Roadmap not yet generated. Start a tutoring session first.',
   dueForReview: 'concept(s) due for review. Let\'s do a quick check first.',
-  errorPrefix: 'Error',
   masteryCheckFailed: 'Mastery check failed',
   practiceFailed: 'Practice task failed',
   reviewFailed: 'Review failed',
@@ -125,11 +119,9 @@ const zh: TranslationMap = {
   viewTitle: '苏格拉底笔记导师',
   viewStatusReady: '就绪',
   noActiveSession: '无活跃会话',
-  noActiveConcept: '无进行中的概念',
   startTutoring: '开始辅导',
   viewRoadmap: '查看学习路线',
   newSession: '新建会话',
-  send: '发送',
   inputPlaceholder: '在此输入你的答案...',
   welcomeMessage: '打开笔记并点击"开始辅导"以开始学习。',
   thinking: '思考中',
@@ -148,7 +140,6 @@ const zh: TranslationMap = {
   emptyNote: '当前笔记为空，请先写入一些内容。',
   noRoadmap: '学习路线尚未生成，请先开始一个辅导会话。',
   dueForReview: '个概念需要复习。让我们先快速检查一下。',
-  errorPrefix: '错误',
   masteryCheckFailed: '掌握程度检查失败',
   practiceFailed: '练习任务失败',
   reviewFailed: '复习失败',

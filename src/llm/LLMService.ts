@@ -123,13 +123,7 @@ export class LLMService {
   }
 
   private supportsToolCalling(): boolean {
-    // OpenAI-compatible endpoints typically support function/tool calling
-    // Anthropic and other providers may not
-    return (
-      this.settings.apiEndpoint.includes('openai.com') ||
-      this.settings.apiEndpoint.includes('api.aiproxy.io') ||
-      !this.settings.apiEndpoint.includes('anthropic.com')
-    );
+    return this.isOpenAICompatible();
   }
 
   private isOpenAICompatible(): boolean {
