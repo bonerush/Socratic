@@ -13,6 +13,7 @@ import {
   type TutorMessage,
 } from './types';
 import { generateId, slugify } from './utils/helpers';
+import { getTranslations, resolveLang, type Lang } from './i18n/translations';
 
 export default class SocraticNoteTutorPlugin extends Plugin {
   settings: SocraticPluginSettings;
@@ -20,6 +21,8 @@ export default class SocraticNoteTutorPlugin extends Plugin {
   private llmService!: LLMService;
   private engine!: SocraticEngine;
   private session: SessionState | null = null;
+  private currentLang: Lang = 'en';
+  private t = getTranslations('en');
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -93,6 +96,24 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     workspace.revealLeaf(leaf);
   }
 
+  updateViewLanguage(lang: Lang): void {
+    this.currentLang = lang;
+    this.t = getTranslations(lang);
+    this.engine?.setLanguage(lang);
+    const view = this.getView();
+    if (view) {
+      view.setLanguage(lang);
+    }
+  }
+
+  private updateLanguageFromText(text: string): void {
+    if (this.settings.language !== 'auto') return;
+    const detected = resolveLang('auto', text);
+    if (detected !== this.currentLang) {
+      this.updateViewLanguage(detected);
+    }
+  }
+
   getView(): SocraticView | null {
     const leaves = this.app.workspace.getLeavesOfType(VIEW_TYPE_SOCRATIC);
     if (leaves.length > 0 && leaves[0]?.view instanceof SocraticView) {
@@ -104,47 +125,61 @@ export default class SocraticNoteTutorPlugin extends Plugin {
   async startTutoring(): Promise<void> {
     const view = this.getView();
     if (!view) {
-      new Notice('Please open the Socratic Tutor panel first.');
+      new Notice(this.t.noPanel);
       return;
     }
 
     if (!this.settings.apiKey) {
-      view.showError('Please configure your API key in plugin settings first.');
+      view.showError(this.t.noApiKey);
       return;
     }
 
-    const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    let activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
     if (!activeView) {
-      view.showError('Please open a note to start tutoring.');
-      return;
+      const mdLeaves = this.app.workspace.getLeavesOfType('markdown');
+      if (mdLeaves.length > 0 && mdLeaves[0]?.view instanceof MarkdownView) {
+        activeView = mdLeaves[0].view;
+      } else {
+        view.showError(this.t.noNote);
+        return;
+      }
     }
 
     const noteContent = activeView.editor.getValue();
     const noteTitle = activeView.file?.name?.replace(/\.md$/, '') || 'Untitled';
 
     if (!noteContent.trim()) {
-      view.showError('The current note is empty. Please write some content first.');
+      view.showError(this.t.emptyNote);
       return;
     }
 
-    const slug = slugify(noteTitle);
-    const exists = await this.sessionManager.sessionExists(slug);
+    try {
+      const slug = slugify(noteTitle);
+      const exists = await this.sessionManager.sessionExists(slug);
 
-    if (exists) {
-      const choice = await view.showSessionResumeDialog();
-      if (choice === 'resume') {
-        const loaded = await this.sessionManager.loadSession(slug);
-        if (loaded) {
-          this.session = loaded;
-          await this.resumeSession();
-          return;
+      if (exists) {
+        const choice = await view.showSessionResumeDialog();
+        if (choice === 'resume') {
+          const loaded = await this.sessionManager.loadSession(slug);
+          if (loaded) {
+            this.session = loaded;
+            await this.resumeSession();
+            return;
+          }
+        } else {
+          await this.sessionManager.deleteSession(slug);
         }
-      } else {
-        await this.sessionManager.deleteSession(slug);
       }
-    }
 
-    await this.startNewSessionWithNote(noteTitle, noteContent);
+      const lang = resolveLang(this.settings.language, noteContent);
+      this.currentLang = lang;
+      this.t = getTranslations(lang);
+      this.engine.setLanguage(lang);
+      view.setLanguageFromContent(this.settings.language, noteContent);
+      await this.startNewSessionWithNote(noteTitle, noteContent);
+    } catch (error) {
+      view.showError(`${this.t.startFailed}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   async startNewSession(): Promise<void> {
@@ -152,7 +187,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     const view = this.getView();
     if (view) {
       view.clearMessages();
-      view.showError('Session cleared. Open a note and click "Start Tutoring".');
+      view.showError(this.t.sessionCleared);
     }
   }
 
@@ -162,7 +197,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     try {
       const exists = await this.app.vault.adapter.exists(roadmapPath);
       if (!exists) {
-        new Notice('Roadmap not yet generated. Start a tutoring session first.');
+        new Notice(this.t.noRoadmap);
         return;
       }
       const vaultPath = this.app.vault.getRoot().path
@@ -170,12 +205,15 @@ export default class SocraticNoteTutorPlugin extends Plugin {
         : roadmapPath;
       window.open(`file://${vaultPath}`);
     } catch {
-      new Notice('Roadmap not yet generated. Start a tutoring session first.');
+      new Notice(this.t.noRoadmap);
     }
   }
 
   async processUserResponse(text: string): Promise<void> {
     if (!this.session) return;
+
+    this.updateLanguageFromText(text);
+
     this.session.messages.push({
       id: generateId(),
       role: 'user',
@@ -188,6 +226,9 @@ export default class SocraticNoteTutorPlugin extends Plugin {
 
   async processChoiceSelection(option: string, _index: number): Promise<void> {
     if (!this.session) return;
+
+    this.updateLanguageFromText(option);
+
     this.session.messages.push({
       id: generateId(),
       role: 'user',
@@ -213,13 +254,6 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     if (!view) return;
 
     view.clearMessages();
-    view.addMessage({
-      id: generateId(),
-      role: 'tutor',
-      type: 'info',
-      content: `Let's begin exploring "${noteTitle}" together. I'll start by understanding what you already know.`,
-      timestamp: Date.now(),
-    });
 
     await this.runDiagnosis();
   }
@@ -229,40 +263,46 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     const view = this.getView();
     if (!view) return;
 
-    view.clearMessages();
+    try {
+      view.clearMessages();
 
-    for (const msg of this.session.messages) {
-      view.addMessage(msg);
-    }
-
-    const needsReview = this.session.concepts.filter(
-      c => c.status === 'mastered' && c.lastReviewTime &&
-        (Date.now() - c.lastReviewTime) / 1000 > c.reviewInterval
-    );
-
-    if (needsReview.length > 0) {
-      view.addMessage({
-        id: generateId(),
-        role: 'tutor',
-        type: 'info',
-        content: `You have ${needsReview.length} concept(s) due for review. Let's do a quick check first.`,
-        timestamp: Date.now(),
-      });
-      for (const concept of needsReview) {
-        await this.runReview(concept);
+      for (const msg of this.session.messages) {
+        view.addMessage(msg);
       }
+
+      const needsReview = this.session.concepts.filter(
+        c => c.status === 'mastered' && c.lastReviewTime &&
+          (Date.now() - c.lastReviewTime) / 1000 > c.reviewInterval
+      );
+
+      if (needsReview.length > 0) {
+        view.addMessage({
+          id: generateId(),
+          role: 'tutor',
+          type: 'info',
+          content: `${needsReview.length} ${this.t.dueForReview}`,
+          timestamp: Date.now(),
+        });
+        for (const concept of needsReview) {
+          await this.runReview(concept);
+        }
+      }
+
+      view.updateProgress(this.session);
+
+      // 如果最后一条 tutor 消息是待回答问题（选择题或开放式问题），
+      // 不自动继续对话，等待用户先回答
+      const lastMsg = this.session.messages[this.session.messages.length - 1];
+      const hasPendingQuestion = lastMsg
+        && lastMsg.role === 'tutor'
+        && (lastMsg.type === 'question' || lastMsg.question !== undefined);
+
+      if (!hasPendingQuestion) {
+        await this.continueTutoring();
+      }
+    } catch (error) {
+      view.showError(`${this.t.resumeFailed}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-
-    view.addMessage({
-      id: generateId(),
-      role: 'tutor',
-      type: 'info',
-      content: 'Welcome back! Let\'s continue from where we left off.',
-      timestamp: Date.now(),
-    });
-
-    view.updateProgress(this.session);
-    await this.continueTutoring();
   }
 
   private async runDiagnosis(): Promise<void> {
@@ -277,7 +317,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       view.updateProgress(this.session);
       await this.sessionManager.saveSession(this.session.noteSlug, this.session);
     } catch (error) {
-      view.showError(`Diagnosis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      view.showError(`${this.t.diagnosisFailed}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -287,14 +327,6 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     if (!view) return;
 
     try {
-      view.addMessage({
-        id: generateId(),
-        role: 'tutor',
-        type: 'info',
-        content: 'Thank you! Let me analyze your note and create a learning path for you...',
-        timestamp: Date.now(),
-      });
-
       const { concepts } = await this.engine.stepExtractConcepts(this.session);
 
       const conceptStates: ConceptState[] = concepts.map(c => ({
@@ -315,28 +347,18 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       const roadmapHtml = this.generateRoadmapHtml();
       await this.sessionManager.saveRoadmap(this.session!.noteSlug, roadmapHtml);
 
-      const conceptNames = concepts.map(c => `- ${c.name}`).join('\n');
-      view.addMessage({
-        id: generateId(),
-        role: 'tutor',
-        type: 'info',
-        content: `I've identified ${concepts.length} key concepts from your note:\n\n${conceptNames}\n\nLet's start with the first one!`,
-        timestamp: Date.now(),
-      });
-
-      view.updateProgress(this.session!);
       await this.sessionManager.saveSession(this.session!.noteSlug, this.session!);
 
       // Continue to first concept
       await this.continueTutoring(recursionDepth + 1);
     } catch (error) {
-      view.showError(`Failed to analyze concepts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      view.showError(`${this.t.conceptExtractFailed}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   private async continueTutoring(recursionDepth = 0): Promise<void> {
     if (recursionDepth > 5) {
-      console.warn('Tutoring loop exceeded max recursion depth, forcing return.');
+      new Notice(this.t.tutoringError);
       return;
     }
     if (!this.session) return;
@@ -404,26 +426,12 @@ export default class SocraticNoteTutorPlugin extends Plugin {
         return;
       }
 
-      const recentMessages = this.session.messages.slice(-4);
-      const hasUnansweredQuestion = recentMessages.some(
-        m => m.role === 'tutor' && (m.type === 'question' || m.type === 'feedback' || m.type === 'info')
-      );
-      const lastIsUser = recentMessages.length > 0 && recentMessages[recentMessages.length - 1]?.role === 'user';
+      // Update progress immediately so UI shows the active concept during LLM call
+      view.updateProgress(this.session);
 
-      if (lastIsUser || hasUnansweredQuestion) {
-        const roundsSinceLastCheck = this.countRoundsForConcept(currentConcept.id);
-        if (roundsSinceLastCheck >= 4) {
-          await this.runMasteryCheck(currentConcept.id);
-        } else {
-          const msg = await this.engine.stepAskQuestion(this.session);
-          this.session.messages.push(msg);
-          view.addMessage(msg);
-        }
-      } else {
-        const msg = await this.engine.stepAskQuestion(this.session);
-        this.session.messages.push(msg);
-        view.addMessage(msg);
-      }
+      const msg = await this.engine.stepAskQuestion(this.session);
+      this.session.messages.push(msg);
+      view.addMessage(msg);
 
       view.updateProgress(this.session);
       await this.sessionManager.saveSession(this.session.noteSlug, this.session);
@@ -437,37 +445,41 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     const view = this.getView();
     if (!view) return;
 
-    const concept = this.session.concepts.find(c => c.id === conceptId);
-    if (!concept) return;
+    try {
+      const concept = this.session.concepts.find(c => c.id === conceptId);
+      if (!concept) return;
 
-    const { message: msg, dimensions } = await this.engine.stepMasteryCheck(this.session, conceptId);
-    this.session.messages.push(msg);
-    view.addMessage(msg);
+      const { message: msg, dimensions } = await this.engine.stepMasteryCheck(this.session, conceptId);
+      this.session.messages.push(msg);
+      view.addMessage(msg);
 
-    const selfAssessment = await view.showSelfAssessment();
+      const selfAssessment = await view.showSelfAssessment();
 
-    const { passed, newScore } = this.engine.updateMasteryFromCheck(
-      this.session, conceptId, dimensions, selfAssessment
-    );
+      const { passed, newScore } = this.engine.updateMasteryFromCheck(
+        this.session, conceptId, dimensions, selfAssessment
+      );
 
-    if (passed && newScore >= this.settings.masteryThreshold) {
-      await this.runPracticeTask(concept.id);
-    } else {
-      this.session.currentConceptId = conceptId;
-      concept.status = 'learning';
-      const feedbackMsg: TutorMessage = {
-        id: generateId(),
-        role: 'tutor',
-        type: 'feedback',
-        content: `Your current mastery score is ${newScore}%. Let's work on strengthening your understanding.`,
-        timestamp: Date.now(),
-      };
-      this.session.messages.push(feedbackMsg);
-      view.addMessage(feedbackMsg);
+      if (passed && newScore >= this.settings.masteryThreshold) {
+        await this.runPracticeTask(concept.id);
+      } else {
+        this.session.currentConceptId = conceptId;
+        concept.status = 'learning';
+        const feedbackMsg: TutorMessage = {
+          id: generateId(),
+          role: 'tutor',
+          type: 'feedback',
+          content: `Mastery: ${newScore}%`,
+          timestamp: Date.now(),
+        };
+        this.session.messages.push(feedbackMsg);
+        view.addMessage(feedbackMsg);
+      }
+
+      view.updateProgress(this.session);
+      await this.sessionManager.saveSession(this.session.noteSlug, this.session);
+    } catch (error) {
+      view.showError(`${this.t.masteryCheckFailed}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-
-    view.updateProgress(this.session);
-    await this.sessionManager.saveSession(this.session.noteSlug, this.session);
   }
 
   private async runPracticeTask(conceptId: string): Promise<void> {
@@ -475,20 +487,16 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     const view = this.getView();
     if (!view) return;
 
-    view.addMessage({
-      id: generateId(),
-      role: 'tutor',
-      type: 'info',
-      content: 'Good progress! Let\'s solidify your understanding with a quick practice task.',
-      timestamp: Date.now(),
-    });
+    try {
+      const msg = await this.engine.stepPracticeTask(this.session, conceptId);
+      this.session.messages.push(msg);
+      view.addMessage(msg);
 
-    const msg = await this.engine.stepPracticeTask(this.session, conceptId);
-    this.session.messages.push(msg);
-    view.addMessage(msg);
-
-    view.updateProgress(this.session);
-    await this.sessionManager.saveSession(this.session.noteSlug, this.session);
+      view.updateProgress(this.session);
+      await this.sessionManager.saveSession(this.session.noteSlug, this.session);
+    } catch (error) {
+      view.showError(`${this.t.practiceFailed}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   private async runReview(concept: { id: string }): Promise<void> {
@@ -496,12 +504,16 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     const view = this.getView();
     if (!view) return;
 
-    const fullConcept = this.session.concepts.find(c => c.id === concept.id);
-    if (!fullConcept) return;
+    try {
+      const fullConcept = this.session.concepts.find(c => c.id === concept.id);
+      if (!fullConcept) return;
 
-    const msg = await this.engine.stepReviewQuestion(this.session, fullConcept);
-    this.session.messages.push(msg);
-    view.addMessage(msg);
+      const msg = await this.engine.stepReviewQuestion(this.session, fullConcept);
+      this.session.messages.push(msg);
+      view.addMessage(msg);
+    } catch (error) {
+      view.showError(`${this.t.reviewFailed}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   private async finalizeSession(): Promise<void> {
@@ -509,42 +521,34 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     const view = this.getView();
     if (!view) return;
 
-    this.session.completed = true;
+    try {
+      this.session.completed = true;
 
-    view.addMessage({
-      id: generateId(),
-      role: 'tutor',
-      type: 'info',
-      content: `Congratulations! You've completed the learning path for "${this.session.noteTitle}". All concepts have been mastered.`,
-      timestamp: Date.now(),
-    });
-
-    await this.generateSessionOutputs();
-    await this.updateLearnerProfile();
-    await this.sessionManager.saveSession(this.session.noteSlug, this.session);
-
-    const summaryPath = `${this.sessionManager.getSessionDir(this.session.noteSlug)}/summary-final.html`;
-    view.addMessage({
-      id: generateId(),
-      role: 'tutor',
-      type: 'info',
-      content: `Session complete! Summary and concept maps have been saved to \`${summaryPath}\`.`,
-      timestamp: Date.now(),
-    });
+      await this.generateSessionOutputs();
+      await this.updateLearnerProfile();
+      await this.sessionManager.saveSession(this.session.noteSlug, this.session);
+    } catch (error) {
+      view.showError(`${this.t.finalizeFailed}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   private async generateSessionOutputs(): Promise<void> {
     if (!this.session) return;
-    const slug = this.session.noteSlug;
 
-    const roadmapHtml = this.generateRoadmapHtml();
-    await this.sessionManager.saveRoadmap(slug, roadmapHtml);
+    try {
+      const slug = this.session.noteSlug;
 
-    const summaryHtml = this.generateSummaryHtml(false);
-    await this.sessionManager.saveSummary(slug, summaryHtml, false);
+      const roadmapHtml = this.generateRoadmapHtml();
+      await this.sessionManager.saveRoadmap(slug, roadmapHtml);
 
-    const finalSummaryHtml = this.generateSummaryHtml(true);
-    await this.sessionManager.saveSummary(slug, finalSummaryHtml, true);
+      const summaryHtml = this.generateSummaryHtml(false);
+      await this.sessionManager.saveSummary(slug, summaryHtml, false);
+
+      const finalSummaryHtml = this.generateSummaryHtml(true);
+      await this.sessionManager.saveSummary(slug, finalSummaryHtml, true);
+    } catch (error) {
+      new Notice(`${this.t.outputFailed}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   private escapeHtml(text: string): string {
@@ -570,7 +574,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
         : c.status === 'skipped' ? '#9e9e9e'
         : '#e0e0e0';
       conceptsHtml += `<div class="concept" style="border-left: 4px solid ${color}; padding: 8px 12px; margin: 8px 0; background: #f5f5f5; border-radius: 4px;">
-        <strong>${c.name}</strong>
+        <strong>${this.escapeHtml(c.name)}</strong>
         <span style="float:right; color: ${color};">${c.status === 'mastered' ? '✓ Mastered' : c.status === 'learning' ? '● Learning' : c.status === 'skipped' ? '— Skipped' : '○ Pending'} (${c.masteryScore}%)</span>
       </div>`;
     }
@@ -677,7 +681,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
   <h2>Recommendations</h2>
   <ul>
     ${s.concepts.filter(c => c.status !== 'mastered').length > 0
-      ? `<li>Continue working on: ${s.concepts.filter(c => c.status !== 'mastered').map(c => c.name).join(', ')}</li>`
+      ? `<li>Continue working on: ${s.concepts.filter(c => c.status !== 'mastered').map(c => this.escapeHtml(c.name)).join(', ')}</li>`
       : '<li>All concepts mastered! Consider reviewing with spaced repetition.</li>'}
     <li>Concepts mastered: ${s.concepts.filter(c => c.status === 'mastered').length}/${s.concepts.length}</li>
   </ul>
@@ -687,24 +691,29 @@ export default class SocraticNoteTutorPlugin extends Plugin {
 
   private async updateLearnerProfile(): Promise<void> {
     if (!this.session) return;
-    const profile = await this.sessionManager.loadLearnerProfile();
-    const updatedProfile = {
-      learningStyle: profile?.learningStyle || 'unknown',
-      commonMisconceptionPatterns: [
-        ...new Set([
-          ...(profile?.commonMisconceptionPatterns || []),
-          ...this.session.misconceptions
-            .filter(m => !m.resolved)
-            .map(m => m.inferredRootCause),
-        ]),
-      ],
-      selfCalibrationHistory: [
-        ...(profile?.selfCalibrationHistory || []),
-      ],
-      sessionCount: (profile?.sessionCount || 0) + 1,
-      lastUpdated: Date.now(),
-    };
-    await this.sessionManager.saveLearnerProfile(updatedProfile);
+
+    try {
+      const profile = await this.sessionManager.loadLearnerProfile();
+      const updatedProfile = {
+        learningStyle: profile?.learningStyle || 'unknown',
+        commonMisconceptionPatterns: [
+          ...new Set([
+            ...(profile?.commonMisconceptionPatterns || []),
+            ...this.session.misconceptions
+              .filter(m => !m.resolved)
+              .map(m => m.inferredRootCause),
+          ]),
+        ],
+        selfCalibrationHistory: [
+          ...(profile?.selfCalibrationHistory || []),
+        ],
+        sessionCount: (profile?.sessionCount || 0) + 1,
+        lastUpdated: Date.now(),
+      };
+      await this.sessionManager.saveLearnerProfile(updatedProfile);
+    } catch (error) {
+      new Notice(`${this.t.profileFailed}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   private countRoundsForConcept(conceptId: string): number {

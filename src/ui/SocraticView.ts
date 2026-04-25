@@ -1,7 +1,8 @@
-import { ItemView, WorkspaceLeaf } from 'obsidian';
+import { ItemView, WorkspaceLeaf, Notice } from 'obsidian';
 import { VIEW_TYPE_SOCRATIC } from '../types';
 import type { TutorMessage, SessionState, SelfAssessmentLevel } from '../types';
 import type SocraticNoteTutorPlugin from '../main';
+import { getTranslations, resolveLang, type Lang } from '../i18n/translations';
 import { generateId } from '../utils/helpers';
 
 export class SocraticView extends ItemView {
@@ -9,11 +10,48 @@ export class SocraticView extends ItemView {
   private messagesEl: HTMLElement;
   private inputEl: HTMLElement;
   private inputArea: HTMLTextAreaElement;
-  private sendBtn: HTMLElement;
   private headerEl: HTMLElement;
+  private headerTitleEl: HTMLElement;
+  private headerStatusEl: HTMLElement;
   private progressEl: HTMLElement;
   private conceptNameEl: HTMLElement;
+  private welcomeEl: HTMLElement;
+  private startBtn: HTMLElement;
+  private roadmapBtn: HTMLElement;
+  private newSessionBtn: HTMLElement;
   private isProcessing = false;
+  private t = getTranslations('en');
+  private readonly STREAM_INTERVAL_MS = 20;
+  private readonly STREAM_CHARS_PER_TICK = 2;
+
+  setLanguage(lang: Lang): void {
+    this.t = getTranslations(lang);
+    this.refreshUIText();
+  }
+
+  setLanguageFromContent(langSetting: string, noteContent: string): void {
+    this.t = getTranslations(resolveLang(langSetting, noteContent));
+    this.refreshUIText();
+  }
+
+  private refreshUIText(): void {
+    // Header
+    this.headerTitleEl.textContent = this.t.viewTitle;
+    this.headerStatusEl.textContent = this.t.viewStatusReady;
+
+    // Welcome message
+    if (this.welcomeEl) {
+      this.welcomeEl.textContent = this.t.welcomeMessage;
+    }
+
+    // Input area
+    this.inputArea.placeholder = this.t.inputPlaceholder;
+
+    // Action buttons
+    if (this.startBtn) this.startBtn.textContent = this.t.startTutoring;
+    if (this.roadmapBtn) this.roadmapBtn.textContent = this.t.viewRoadmap;
+    if (this.newSessionBtn) this.newSessionBtn.textContent = this.t.newSession;
+  }
 
   constructor(leaf: WorkspaceLeaf, plugin: SocraticNoteTutorPlugin) {
     super(leaf);
@@ -50,8 +88,8 @@ export class SocraticView extends ItemView {
 
   private buildHeader(container: HTMLElement): void {
     this.headerEl = container.createEl('div', { cls: 'socratic-header' });
-    this.headerEl.createEl('h3', { text: 'Socratic Note Tutor' });
-    this.headerEl.createEl('span', { cls: 'socratic-status', text: 'Ready' });
+    this.headerTitleEl = this.headerEl.createEl('h3', { text: this.t.viewTitle });
+    this.headerStatusEl = this.headerEl.createEl('span', { cls: 'socratic-status', text: this.t.viewStatusReady });
   }
 
   private buildProgressBar(container: HTMLElement): void {
@@ -59,7 +97,7 @@ export class SocraticView extends ItemView {
 
     this.conceptNameEl = progressContainer.createEl('div', {
       cls: 'socratic-concept-name',
-      text: 'No active session',
+      text: this.t.noActiveSession,
     });
 
     this.progressEl = progressContainer.createEl('div', { cls: 'socratic-progress-bar' });
@@ -68,9 +106,9 @@ export class SocraticView extends ItemView {
 
   private buildMessagesArea(container: HTMLElement): void {
     this.messagesEl = container.createEl('div', { cls: 'socratic-messages' });
-    this.messagesEl.createEl('div', {
+    this.welcomeEl = this.messagesEl.createEl('div', {
       cls: 'socratic-welcome',
-      text: 'Open a note and click "Start Tutoring" to begin.',
+      text: this.t.welcomeMessage,
     });
   }
 
@@ -79,12 +117,7 @@ export class SocraticView extends ItemView {
 
     this.inputArea = this.inputEl.createEl('textarea', {
       cls: 'socratic-input',
-      attr: { placeholder: 'Type your answer here...', rows: '2' },
-    });
-
-    this.sendBtn = this.inputEl.createEl('button', {
-      cls: 'socratic-send-btn',
-      text: 'Send',
+      attr: { placeholder: this.t.inputPlaceholder, rows: '2' },
     });
 
     this.inputArea.addEventListener('keydown', (e) => {
@@ -93,31 +126,32 @@ export class SocraticView extends ItemView {
         this.handleUserInput();
       }
     });
-
-    this.sendBtn.addEventListener('click', () => this.handleUserInput());
   }
 
   private buildActionButtons(container: HTMLElement): void {
     const actionsEl = container.createEl('div', { cls: 'socratic-actions' });
 
-    actionsEl.createEl('button', {
+    this.startBtn = actionsEl.createEl('button', {
       cls: 'socratic-btn socratic-btn-primary',
-      text: 'Start Tutoring',
-    }).addEventListener('click', () => {
+      text: this.t.startTutoring,
+    });
+    this.startBtn.addEventListener('click', () => {
       this.plugin.startTutoring();
     });
 
-    actionsEl.createEl('button', {
+    this.roadmapBtn = actionsEl.createEl('button', {
       cls: 'socratic-btn',
-      text: 'View Roadmap',
-    }).addEventListener('click', () => {
+      text: this.t.viewRoadmap,
+    });
+    this.roadmapBtn.addEventListener('click', () => {
       this.plugin.openRoadmap();
     });
 
-    actionsEl.createEl('button', {
+    this.newSessionBtn = actionsEl.createEl('button', {
       cls: 'socratic-btn',
-      text: 'New Session',
-    }).addEventListener('click', () => {
+      text: this.t.newSession,
+    });
+    this.newSessionBtn.addEventListener('click', () => {
       this.plugin.startNewSession();
     });
   }
@@ -125,7 +159,10 @@ export class SocraticView extends ItemView {
   async handleUserInput(): Promise<void> {
     if (this.isProcessing) return;
     const text = this.inputArea.value.trim();
-    if (!text) return;
+    if (!text) {
+      new Notice(this.t.emptyInput);
+      return;
+    }
 
     this.inputArea.value = '';
     this.addMessage({
@@ -163,25 +200,69 @@ export class SocraticView extends ItemView {
       cls: `socratic-message socratic-message-${message.role}`,
     });
 
-    msgEl.createEl('div', {
+    const contentEl = msgEl.createEl('div', {
       cls: 'socratic-message-content',
-      text: message.content,
     });
 
-    if (message.question?.options) {
-      const optionsEl = msgEl.createEl('div', { cls: 'socratic-options' });
-      message.question.options.forEach((option, index) => {
-        const btn = optionsEl.createEl('button', {
-          cls: 'socratic-option-btn',
-          text: option,
-        });
-        btn.addEventListener('click', () => {
-          this.handleChoiceSelection(option, index);
-        });
+    // User messages and system errors appear instantly; tutor messages stream in
+    if (message.role === 'user' || message.type === 'system') {
+      contentEl.textContent = message.content;
+      this.addOptionsIfNeeded(msgEl, message);
+      this.scrollToBottom();
+    } else {
+      this.streamText(contentEl, message.content, () => {
+        this.addOptionsIfNeeded(msgEl, message);
+        this.scrollToBottom();
       });
     }
+  }
 
-    this.scrollToBottom();
+  private addOptionsIfNeeded(msgEl: HTMLElement, message: TutorMessage): void {
+    if (!message.question?.options) return;
+
+    const optionsEl = msgEl.createEl('div', { cls: 'socratic-options' });
+    message.question.options.forEach((option, index) => {
+      const btn = optionsEl.createEl('button', {
+        cls: 'socratic-option-btn',
+        text: option,
+      });
+      btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        optionsEl.querySelectorAll('.socratic-option-btn').forEach(b => {
+          (b as HTMLButtonElement).disabled = true;
+        });
+        this.handleChoiceSelection(option, index);
+      });
+    });
+  }
+
+  private streamText(element: HTMLElement, fullText: string, onComplete: () => void): void {
+    let index = 0;
+    const length = fullText.length;
+
+    if (length === 0) {
+      onComplete();
+      return;
+    }
+
+    element.addClass('socratic-streaming-cursor');
+
+    const tick = (): void => {
+      const charsLeft = length - index;
+      const count = Math.min(this.STREAM_CHARS_PER_TICK, charsLeft);
+      element.textContent = fullText.slice(0, index + count);
+      index += count;
+      this.scrollToBottom();
+
+      if (index >= length) {
+        element.removeClass('socratic-streaming-cursor');
+        onComplete();
+      } else {
+        setTimeout(tick, this.STREAM_INTERVAL_MS);
+      }
+    };
+
+    tick();
   }
 
   private handleChoiceSelection(option: string, index: number): void {
@@ -208,7 +289,7 @@ export class SocraticView extends ItemView {
     const indicator = this.messagesEl.createEl('div', {
       cls: 'socratic-message socratic-message-tutor socratic-typing',
     });
-    indicator.createEl('span', { text: 'Thinking' });
+    indicator.createEl('span', { text: this.t.thinking });
     indicator.createEl('span', { cls: 'socratic-typing-dots', text: '...' });
   }
 
@@ -222,7 +303,6 @@ export class SocraticView extends ItemView {
 
   setInputEnabled(enabled: boolean): void {
     this.inputArea.disabled = !enabled;
-    this.sendBtn.toggleClass('socratic-send-btn--disabled', !enabled);
   }
 
   updateProgress(session: SessionState): void {
@@ -248,15 +328,15 @@ export class SocraticView extends ItemView {
       });
       msgEl.createEl('div', {
         cls: 'socratic-message-content',
-        text: 'How well do you feel you understand this concept?',
+        text: this.t.selfAssessmentTitle,
       });
 
       const options = msgEl.createEl('div', { cls: 'socratic-options' });
       const levels: { label: string; value: SelfAssessmentLevel }[] = [
-        { label: 'Solid — I could teach it', value: 'solid' },
-        { label: 'Okay — I mostly get it', value: 'okay' },
-        { label: 'Fuzzy — Some gaps remain', value: 'fuzzy' },
-        { label: 'Lost — I don\'t understand', value: 'lost' },
+        { label: this.t.selfAssessmentSolid, value: 'solid' },
+        { label: this.t.selfAssessmentOkay, value: 'okay' },
+        { label: this.t.selfAssessmentFuzzy, value: 'fuzzy' },
+        { label: this.t.selfAssessmentLost, value: 'lost' },
       ];
 
       levels.forEach((level) => {
@@ -265,7 +345,10 @@ export class SocraticView extends ItemView {
           text: level.label,
         });
         btn.addEventListener('click', () => {
-          options.querySelectorAll('button').forEach(b => b.removeClass('socratic-option-btn'));
+          if (btn.disabled) return;
+          options.querySelectorAll('button').forEach(b => {
+            (b as HTMLButtonElement).disabled = true;
+          });
           resolve(level.value);
         });
       });
@@ -279,21 +362,33 @@ export class SocraticView extends ItemView {
       });
       msgEl.createEl('div', {
         cls: 'socratic-message-content',
-        text: 'An unfinished session was found. Would you like to resume or start fresh?',
+        text: this.t.resumeDialogTitle,
       });
 
       const options = msgEl.createEl('div', { cls: 'socratic-options' });
       const resumeBtn = options.createEl('button', {
         cls: 'socratic-option-btn socratic-option-btn-primary',
-        text: 'Resume last session',
+        text: this.t.resumeResume,
       });
-      resumeBtn.addEventListener('click', () => resolve('resume'));
+      resumeBtn.addEventListener('click', () => {
+        if (resumeBtn.disabled) return;
+        options.querySelectorAll('button').forEach(b => {
+          (b as HTMLButtonElement).disabled = true;
+        });
+        resolve('resume');
+      });
 
       const restartBtn = options.createEl('button', {
         cls: 'socratic-option-btn socratic-option-btn-secondary',
-        text: 'Start fresh',
+        text: this.t.resumeRestart,
       });
-      restartBtn.addEventListener('click', () => resolve('restart'));
+      restartBtn.addEventListener('click', () => {
+        if (restartBtn.disabled) return;
+        options.querySelectorAll('button').forEach(b => {
+          (b as HTMLButtonElement).disabled = true;
+        });
+        resolve('restart');
+      });
     });
   }
 

@@ -18,7 +18,7 @@ export class SessionManager {
   async sessionExists(noteSlug: string): Promise<boolean> {
     const dir = this.getSessionDir(noteSlug);
     try {
-      return await this.vault.adapter.exists(`${dir}/session.md`);
+      return await this.vault.adapter.exists(`${dir}/session.json`);
     } catch {
       return false;
     }

@@ -71,8 +71,14 @@
 }
 
 .socratic-message {
-  max-width: 85%;
+  max-width: 90%;
+  min-width: 0;
   animation: fadeIn 0.2s ease;
+}
+
+.socratic-message.socratic-message-tutor {
+  max-width: 92%;
+  min-width: 0;
 }
 
 @keyframes fadeIn {
@@ -84,23 +90,24 @@
   align-self: flex-start;
 }
 
+.socratic-message-tutor .socratic-message-content {
+  background: color-mix(in oklch, var(--interactive-accent) 10%, var(--background-primary));
+  color: var(--text-normal);
+  border: 1px solid color-mix(in oklch, var(--interactive-accent) 25%, var(--background-modifier-border));
+  border-bottom-left-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* Fallback for browsers without color-mix support */
+@supports not (background: color-mix(in oklch, red, blue)) {
+  .socratic-message-tutor .socratic-message-content {
+    background: var(--background-secondary, #f0f0f0);
+    border-color: var(--background-modifier-border);
+  }
+}
+
 .socratic-message-user {
   align-self: flex-end;
-}
-
-.socratic-message-content {
-  padding: 10px 14px;
-  border-radius: 12px;
-  font-size: 14px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-}
-
-.socratic-message-tutor .socratic-message-content {
-  background: var(--background-secondary);
-  color: var(--text-normal);
-  border-bottom-left-radius: 4px;
 }
 
 .socratic-message-user .socratic-message-content {
@@ -109,28 +116,63 @@
   border-bottom-right-radius: 4px;
 }
 
+.socratic-message-content {
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
 .socratic-options {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 8px;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Expand message when it contains option buttons so buttons have room */
+.socratic-message:has(.socratic-options) {
+  max-width: 100%;
+  align-self: stretch;
 }
 
 .socratic-option-btn {
-  padding: 8px 14px;
+  padding: 12px 18px;
   border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--background-primary);
   color: var(--text-normal);
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.7;
   cursor: pointer;
   text-align: left;
   transition: background 0.15s, border-color 0.15s;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+  hyphens: auto;
+  width: fit-content;
+  max-width: 100%;
+  height: auto;
+  min-height: auto;
+  overflow: visible;
+  flex: none;
+  box-sizing: border-box;
 }
 
 .socratic-option-btn:hover {
   background: var(--background-modifier-hover);
   border-color: var(--interactive-accent);
+}
+
+.socratic-option-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .socratic-option-btn-primary {
@@ -153,6 +195,17 @@
 
 .socratic-typing-dots {
   animation: blink 1.2s infinite;
+}
+
+.socratic-streaming-cursor::after {
+  content: '▍';
+  animation: cursorBlink 0.8s infinite;
+  opacity: 0.7;
+}
+
+@keyframes cursorBlink {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 0; }
 }
 
 @keyframes blink {
@@ -189,28 +242,6 @@
 
 .socratic-input:disabled {
   opacity: 0.5;
-}
-
-.socratic-send-btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 8px;
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  align-self: flex-end;
-  transition: opacity 0.15s;
-}
-
-.socratic-send-btn:hover {
-  opacity: 0.9;
-}
-
-.socratic-send-btn--disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .socratic-actions {

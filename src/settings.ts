@@ -1,12 +1,14 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
+import { App, PluginSettingTab, Setting, MarkdownView } from 'obsidian';
 import type SocraticNoteTutorPlugin from './main';
 import { DEFAULT_SETTINGS, type SocraticPluginSettings } from './types';
+import { getTranslations, resolveLang, type Lang } from './i18n/translations';
 
 export { DEFAULT_SETTINGS };
 export type { SocraticPluginSettings };
 
 export class SocraticSettingTab extends PluginSettingTab {
   plugin: SocraticNoteTutorPlugin;
+  private t = getTranslations('en');
 
   constructor(app: App, plugin: SocraticNoteTutorPlugin) {
     super(app, plugin);
@@ -14,14 +16,16 @@ export class SocraticSettingTab extends PluginSettingTab {
   }
 
   display(): void {
+    this.updateTranslations();
+
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl('h2', { text: 'Socratic Note Tutor Settings' });
+    containerEl.createEl('h2', { text: this.t.settingsTitle });
 
     new Setting(containerEl)
-      .setName('API endpoint')
-      .setDesc('The API endpoint for the LLM service (e.g. OpenAI, Anthropic, or local LLM).')
+      .setName(this.t.apiEndpointLabel)
+      .setDesc(this.t.apiEndpointDesc)
       .addText(text => text
         .setPlaceholder('https://api.openai.com/v1/chat/completions')
         .setValue(this.plugin.settings.apiEndpoint)
@@ -31,8 +35,8 @@ export class SocraticSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('API key')
-      .setDesc('Your API key for the LLM service.')
+      .setName(this.t.apiKeyLabel)
+      .setDesc(this.t.apiKeyDesc)
       .addText(text => {
         text.inputEl.type = 'password';
         text
@@ -45,8 +49,8 @@ export class SocraticSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
-      .setName('Model')
-      .setDesc('The model to use for tutoring.')
+      .setName(this.t.modelLabel)
+      .setDesc(this.t.modelDesc)
       .addText(text => text
         .setPlaceholder('gpt-4')
         .setValue(this.plugin.settings.model)
@@ -55,20 +59,38 @@ export class SocraticSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }));
 
+    const currentLang = this.plugin.settings.language;
+
     new Setting(containerEl)
-      .setName('Language preference')
-      .setDesc("Preferred language for tutoring. 'auto' follows the user's note language.")
-      .addText(text => text
-        .setPlaceholder('auto')
-        .setValue(this.plugin.settings.language)
+      .setName(this.t.langLabel)
+      .setDesc(this.t.langDesc)
+      .addDropdown(dropdown => dropdown
+        .addOption('auto', this.t.langAuto)
+        .addOption('en', this.t.langEn)
+        .addOption('zh', this.t.langZh)
+        .setValue(currentLang)
         .onChange(async value => {
           this.plugin.settings.language = value;
           await this.plugin.saveSettings();
+
+          // Resolve language: if 'auto', detect from active note content
+          let resolvedLang: Lang;
+          if (value === 'zh') {
+            resolvedLang = 'zh';
+          } else if (value === 'en') {
+            resolvedLang = 'en';
+          } else {
+            resolvedLang = resolveLang(value, this.getActiveNoteContent());
+          }
+          this.plugin.updateViewLanguage(resolvedLang);
+
+          // Re-render settings tab with new language
+          this.display();
         }));
 
     new Setting(containerEl)
-      .setName('Session storage path')
-      .setDesc('Custom path for storing session data. Leave empty to use vault root.')
+      .setName(this.t.storagePathLabel)
+      .setDesc(this.t.storagePathDesc)
       .addText(text => text
         .setPlaceholder('')
         .setValue(this.plugin.settings.sessionStoragePath)
@@ -78,8 +100,8 @@ export class SocraticSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Mastery threshold')
-      .setDesc('Minimum score (0-100) required to mark a concept as mastered.')
+      .setName(this.t.masteryLabel)
+      .setDesc(this.t.masteryDesc)
       .addSlider(slider => slider
         .setLimits(50, 100, 5)
         .setValue(this.plugin.settings.masteryThreshold)
@@ -90,8 +112,8 @@ export class SocraticSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Max concepts per session')
-      .setDesc('Maximum number of concepts to extract from a single note.')
+      .setName(this.t.maxConceptsLabel)
+      .setDesc(this.t.maxConceptsDesc)
       .addSlider(slider => slider
         .setLimits(3, 30, 1)
         .setValue(this.plugin.settings.maxConceptsPerSession)
@@ -100,5 +122,16 @@ export class SocraticSettingTab extends PluginSettingTab {
           this.plugin.settings.maxConceptsPerSession = value;
           await this.plugin.saveSettings();
         }));
+  }
+
+  private updateTranslations(): void {
+    const setting = this.plugin.settings.language;
+    const lang: Lang = setting === 'zh' ? 'zh' : setting === 'en' ? 'en' : resolveLang(setting, this.getActiveNoteContent());
+    this.t = getTranslations(lang);
+  }
+
+  private getActiveNoteContent(): string {
+    const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+    return view?.editor?.getValue() ?? '';
   }
 }

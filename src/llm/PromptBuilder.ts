@@ -1,7 +1,8 @@
 import type { SessionState, LearnerProfile } from '../types';
+import { getToolDescriptions } from './tools';
 
 export class PromptBuilder {
-  buildSystemPrompt(noteContent: string, learnerProfile?: LearnerProfile | null): string {
+  buildSystemPrompt(noteContent: string, learnerProfile?: LearnerProfile | null, language?: string): string {
     const profileSection = learnerProfile
       ? `\n## Learner Profile\nThis learner has the following traits from previous sessions:\n- Learning style: ${learnerProfile.learningStyle}\n- Common misconception patterns: ${learnerProfile.commonMisconceptionPatterns.join(', ')}\n- Previous sessions completed: ${learnerProfile.sessionCount}\n`
       : '';
@@ -16,18 +17,34 @@ export class PromptBuilder {
 5. Be patient but rigorous — encourage, but never let misunderstandings slide. Use counterexamples to let the student discover contradictions.
 6. Match the user's language — keep technical terms in original with brief explanations.
 7. ALL teaching must be based SOLELY on the provided note content — do not introduce external information.
+8. Skip social niceties — no "thank you", "congratulations", "great job", "let me analyze", or "welcome back" messages. Start directly with your question or feedback, but always produce substantive teaching content.
 
 ## Note Content to Teach
 \`\`\`
 ${noteContent}
 \`\`\`
 ${profileSection}
+## Language
+Respond in ${language === 'zh' ? 'Chinese (中文)' : 'English'}. All tutoring dialogue must be in this language.
+
+## Available Tools
+You have access to the following tools. Call them to interact with the student:
+
+${getToolDescriptions().split('\n').map(line => `\t${line}`).join('\n')}
+
 ## Response Format
-Respond in JSON format:
+Use the appropriate tool based on what you want to do:
+- To ask a question → call \`ask_question\` (选择题工具 / 解答题工具)
+- To give guidance/hints/feedback → call \`provide_guidance\`
+- To assess mastery → call \`assess_mastery\`
+- To extract concepts → call \`extract_concepts\`
+- To send informational messages → call \`send_info\`
+
+IMPORTANT: When function calling is not available, respond in JSON format:
 {
-  "type": "question" | "feedback" | "info" | "check-complete",
-  "questionType": "multiple-choice" | "open-ended" | null,
+  "tool": "ask_question" | "provide_guidance" | "assess_mastery" | "extract_concepts" | "send_info",
   "content": "Your message to the student",
+  "questionType": "multiple-choice" | "open-ended" | null,
   "options": ["Option A", "Option B", "Option C", "Option D"] | null,
   "correctOptionIndex": 0 | null,
   "conceptId": "current-concept-id",
@@ -47,8 +64,9 @@ Respond in JSON format:
 3. A brief description
 4. Dependencies (which concepts should be learned before this one)
 
-Respond in JSON format:
+Use the \`extract_concepts\` tool to return the extracted concepts. If function calling is not available, respond in JSON format:
 {
+  "tool": "extract_concepts",
   "concepts": [
     {
       "id": "concept-slug",

@@ -1,13 +1,16 @@
 import { requestUrl } from 'obsidian';
-import type { SocraticPluginSettings, TutorMessage } from '../types';
+import type { SocraticPluginSettings } from '../types';
+import type { ToolDefinition, ToolCall } from './tools';
 
 export interface LLMMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
+  tool_calls?: ToolCall[];
 }
 
 export interface LLMResponse {
   content: string;
+  toolCalls?: ToolCall[];
   finishReason: string;
   usage?: {
     promptTokens: number;
@@ -31,7 +34,8 @@ export class LLMService {
     systemPrompt: string,
     messages: { role: 'user' | 'assistant'; content: string }[],
     temperature = 0.7,
-    maxTokens = 2000
+    maxTokens = 2000,
+    tools?: ToolDefinition[],
   ): Promise<LLMResponse> {
     if (!this.settings.apiKey) {
       throw new Error('API key not configured. Please set it in plugin settings.');
@@ -46,6 +50,12 @@ export class LLMService {
       temperature,
       max_tokens: maxTokens,
     };
+
+    // Include tool definitions if provided and the API supports them
+    if (tools && this.supportsToolCalling()) {
+      body['tools'] = tools;
+      body['tool_choice'] = 'auto';
+    }
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -65,9 +75,39 @@ export class LLMService {
       });
 
       const data = response.json;
+      const choice = data.choices[0];
+
+      // Handle tool_calls response (OpenAI function calling)
+      if (choice.message?.tool_calls && choice.message.tool_calls.length > 0) {
+        return {
+          content: choice.message.content || '',
+          toolCalls: choice.message.tool_calls.map((tc: {
+            id: string;
+            type?: string;
+            function: { name: string; arguments: string };
+          }) => ({
+            id: tc.id,
+            type: 'function' as const,
+            function: {
+              name: tc.function.name,
+              arguments: tc.function.arguments,
+            },
+          })),
+          finishReason: choice.finish_reason || 'tool_calls',
+          usage: data.usage
+            ? {
+                promptTokens: data.usage.prompt_tokens,
+                completionTokens: data.usage.completion_tokens,
+                totalTokens: data.usage.total_tokens,
+              }
+            : undefined,
+        };
+      }
+
+      // Standard content response
       return {
-        content: data.choices[0].message.content,
-        finishReason: data.choices[0].finish_reason || 'stop',
+        content: choice.message.content || '',
+        finishReason: choice.finish_reason || 'stop',
         usage: data.usage
           ? {
               promptTokens: data.usage.prompt_tokens,
@@ -82,9 +122,21 @@ export class LLMService {
     }
   }
 
+  private supportsToolCalling(): boolean {
+    // OpenAI-compatible endpoints typically support function/tool calling
+    // Anthropic and other providers may not
+    return (
+      this.settings.apiEndpoint.includes('openai.com') ||
+      this.settings.apiEndpoint.includes('api.aiproxy.io') ||
+      !this.settings.apiEndpoint.includes('anthropic.com')
+    );
+  }
+
   private isOpenAICompatible(): boolean {
-    return this.settings.apiEndpoint.includes('openai.com') ||
-           this.settings.apiEndpoint.includes('api.aiproxy.io') ||
-           !this.settings.apiEndpoint.includes('anthropic.com');
+    return (
+      this.settings.apiEndpoint.includes('openai.com') ||
+      this.settings.apiEndpoint.includes('api.aiproxy.io') ||
+      !this.settings.apiEndpoint.includes('anthropic.com')
+    );
   }
 }
