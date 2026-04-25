@@ -196,27 +196,34 @@ export class SocraticView extends ItemView {
   }
 
   addMessage(message: TutorMessage): void {
+    const content = message.content?.trim();
+    const hasOptions = !!message.question?.options?.length;
+    if (!content && !hasOptions) return;
+
     const msgEl = this.messagesEl.createEl('div', {
       cls: `socratic-message socratic-message-${message.role}`,
     });
 
-    const contentEl = msgEl.createEl('div', {
-      cls: 'socratic-message-content',
-    });
+    if (content) {
+      const contentEl = msgEl.createEl('div', { cls: 'socratic-message-content' });
 
-    // User messages and system errors appear instantly; tutor messages stream in
-    if (message.role === 'user' || message.type === 'system') {
-      this.renderMarkdown(message.content, contentEl);
+      // User messages and system errors appear instantly; tutor messages stream in
+      if (message.role === 'user' || message.type === 'system') {
+        this.renderMarkdown(content, contentEl);
+        this.addOptionsIfNeeded(msgEl, message);
+        this.scrollToBottom();
+      } else {
+        this.streamText(contentEl, content, () => {
+          this.renderMarkdown(content, contentEl).then(() => {
+            this.addOptionsIfNeeded(msgEl, message);
+            this.scrollToBottom();
+          });
+        });
+      }
+    } else {
+      // No content but has options — render options directly
       this.addOptionsIfNeeded(msgEl, message);
       this.scrollToBottom();
-    } else {
-      this.streamText(contentEl, message.content, () => {
-        // Re-render as markdown after streaming completes
-        this.renderMarkdown(message.content, contentEl).then(() => {
-          this.addOptionsIfNeeded(msgEl, message);
-          this.scrollToBottom();
-        });
-      });
     }
   }
 

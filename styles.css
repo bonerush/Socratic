@@ -273,7 +273,7 @@
   font-size: 14px;
   line-height: 1.6;
   cursor: pointer;
-  text-align: left;
+  text-align: left !important;
   transition: all 0.18s ease;
   overflow-wrap: break-word;
   white-space: normal;
