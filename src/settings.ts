@@ -1,7 +1,6 @@
 import { App, PluginSettingTab, Setting, MarkdownView } from 'obsidian';
 import type SocraticNoteTutorPlugin from './main';
-import { DEFAULT_SETTINGS, type SocraticPluginSettings } from './types';
-import { getTranslations, resolveLang, type Lang } from './i18n/translations';
+import { getTranslations, resolveLang } from './i18n/translations';
 
 export class SocraticSettingTab extends PluginSettingTab {
   plugin: SocraticNoteTutorPlugin;
