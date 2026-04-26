@@ -1,5 +1,5 @@
 import { type Vault, type TFile, normalizePath } from 'obsidian';
-import { SESSION_DIR, type SessionState, type LearnerProfile, type ConceptState, type MisconceptionRecord, emptyMemoryCollection } from '../types';
+import { SESSION_DIR, type SessionState, type LearnerProfile, type ConceptState, type MisconceptionRecord, type SessionSummary, emptyMemoryCollection } from '../types';
 import { slugify } from '../utils/helpers';
 import { MemoryManager } from '../memory/MemoryManager';
 import { MemoryExtractor } from '../memory/MemoryExtractor';
@@ -93,6 +93,38 @@ export class SessionManager {
       await this.vault.adapter.remove(dir);
     } catch {
       // Directory may not exist
+    }
+  }
+
+  async listSessions(): Promise<SessionSummary[]> {
+    const adapter = this.vault.adapter;
+    try {
+      const exists = await adapter.exists(this.basePath);
+      if (!exists) return [];
+      const { folders } = await adapter.list(this.basePath);
+      const summaries: SessionSummary[] = [];
+      for (const folder of folders) {
+        const sessionPath = normalizePath(`${this.basePath}/${folder}/session.json`);
+        if (!(await adapter.exists(sessionPath))) continue;
+        try {
+          const raw = await adapter.read(sessionPath);
+          const state = JSON.parse(raw) as SessionState;
+          summaries.push({
+            noteSlug: state.noteSlug,
+            noteTitle: state.noteTitle,
+            createdAt: state.createdAt,
+            updatedAt: state.updatedAt,
+            conceptCount: state.concepts.length,
+            completed: state.completed,
+            messageCount: state.messages.length,
+          });
+        } catch {
+          // Skip corrupted sessions
+        }
+      }
+      return summaries.sort((a, b) => b.updatedAt - a.updatedAt);
+    } catch {
+      return [];
     }
   }
 

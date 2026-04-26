@@ -2,7 +2,7 @@ import React from 'react';
 import { useSocratic } from '../SocraticContext';
 
 export function WelcomeScreen() {
-  const { t, onStartTutoring, isProcessing } = useSocratic();
+  const { t, onStartTutoring, isProcessing, setShowHistory } = useSocratic();
 
   return (
     <div className="socratic-welcome">
@@ -23,6 +23,13 @@ export function WelcomeScreen() {
             disabled={isProcessing}
           >
             {t.startTutoring}
+          </button>
+          <button
+            className="socratic-btn"
+            onClick={() => setShowHistory(true)}
+            disabled={isProcessing}
+          >
+            {t.sessionHistoryTitle}
           </button>
         </div>
       </div>

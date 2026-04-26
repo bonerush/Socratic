@@ -616,3 +616,125 @@
   background: rgba(255, 255, 255, 0.25);
   color: var(--text-on-accent);
 }
+
+/* ── Session History ───────────────────────────────────────── */
+
+.socratic-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.socratic-btn-ghost {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.socratic-btn-ghost:hover {
+  color: var(--text-normal);
+}
+
+.socratic-history-panel {
+  background: var(--background-primary);
+  border-radius: 14px;
+  padding: 20px;
+  max-width: 480px;
+  width: 100%;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+}
+
+.socratic-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.socratic-history-header h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.socratic-btn-icon {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.socratic-btn-icon:hover {
+  color: var(--text-normal);
+}
+
+.socratic-history-empty {
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 16px 0;
+}
+
+.socratic-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+
+.socratic-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.socratic-history-item:last-child {
+  border-bottom: none;
+}
+
+.socratic-history-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.socratic-history-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-normal);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.socratic-history-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.socratic-history-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.socratic-btn-danger {
+  background: var(--background-modifier-error);
+  color: var(--text-on-accent);
+}
+
+.socratic-btn-danger:hover {
+  filter: brightness(1.1);
+}

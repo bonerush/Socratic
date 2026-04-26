@@ -111,6 +111,16 @@ export function emptyMemoryCollection(): MemoryCollection {
   return { user: [], feedback: [], project: [], reference: [] };
 }
 
+export interface SessionSummary {
+  noteSlug: string;
+  noteTitle: string;
+  createdAt: number;
+  updatedAt: number;
+  conceptCount: number;
+  completed: boolean;
+  messageCount: number;
+}
+
 export interface SocraticPluginSettings {
   apiEndpoint: string;
   apiKey: string;

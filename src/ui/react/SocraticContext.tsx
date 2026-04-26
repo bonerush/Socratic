@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useSyncExternalStore, useCallback } from 'react';
 import type { App, Component } from 'obsidian';
-import type { TutorMessage, ConceptState, SelfAssessmentLevel } from '../../types';
+import type { TutorMessage, ConceptState, SelfAssessmentLevel, SessionSummary } from '../../types';
 import type { Lang, TranslationMap } from '../../i18n/translations';
 import { ReactSocraticView } from '../ReactSocraticView';
 
@@ -35,6 +35,12 @@ interface SocraticContextType {
   dialogState: DialogState;
   resolveSelfAssessment: (level: SelfAssessmentLevel) => void;
   resolveSessionResume: (choice: 'resume' | 'restart') => void;
+
+  showHistory: boolean;
+  setShowHistory: (show: boolean) => void;
+  listSessionHistory: () => Promise<SessionSummary[]>;
+  loadSessionFromHistory: (slug: string) => Promise<void>;
+  deleteSessionFromHistory: (slug: string) => Promise<void>;
 }
 
 const SocraticContext = createContext<SocraticContextType | null>(null);
@@ -126,6 +132,37 @@ export function SocraticProvider({ view, children }: SocraticProviderProps) {
     await plugin.openRoadmap();
   }, [plugin]);
 
+  const setShowHistoryFn = useCallback((show: boolean) => {
+    view.setShowHistory(show);
+  }, [view]);
+
+  const listSessionHistoryFn = useCallback(async () => {
+    return plugin.listSessionHistory();
+  }, [plugin]);
+
+  const loadSessionFromHistoryFn = useCallback(async (slug: string) => {
+    view.setProcessing(true);
+    try {
+      await plugin.loadSessionFromHistory(slug);
+      view.setShowHistory(false);
+    } catch (e) {
+      view.showError(e instanceof Error ? e.message : 'Error loading session');
+    } finally {
+      view.setProcessing(false);
+    }
+  }, [view, plugin]);
+
+  const deleteSessionFromHistoryFn = useCallback(async (slug: string) => {
+    view.setProcessing(true);
+    try {
+      await plugin.deleteSessionFromHistory(slug);
+    } catch (e) {
+      view.showError(e instanceof Error ? e.message : 'Error deleting session');
+    } finally {
+      view.setProcessing(false);
+    }
+  }, [view, plugin]);
+
   const contextValue: SocraticContextType = {
     messages: state.messages,
     isProcessing: state.isProcessing,
@@ -145,6 +182,11 @@ export function SocraticProvider({ view, children }: SocraticProviderProps) {
     dialogState,
     resolveSelfAssessment: resolveSelfAssessmentFn,
     resolveSessionResume: resolveSessionResumeFn,
+    showHistory: state.showHistory,
+    setShowHistory: setShowHistoryFn,
+    listSessionHistory: listSessionHistoryFn,
+    loadSessionFromHistory: loadSessionFromHistoryFn,
+    deleteSessionFromHistory: deleteSessionFromHistoryFn,
   };
 
   return (

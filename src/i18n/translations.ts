@@ -19,6 +19,17 @@ export interface TranslationMap {
   resumeResume: string;
   resumeRestart: string;
   sessionCleared: string;
+  sessionHistoryTitle: string;
+  sessionHistoryEmpty: string;
+  continueLabel: string;
+  deleteLabel: string;
+  conceptsLabel: string;
+  messagesLabel: string;
+  completedLabel: string;
+  inProgressLabel: string;
+  loading: string;
+  sessionNotFound: string;
+  closeLabel: string;
   noPanel: string;
   noApiKey: string;
   noNote: string;
@@ -86,6 +97,17 @@ const en: TranslationMap = {
   resumeResume: 'Resume last session',
   resumeRestart: 'Start fresh',
   sessionCleared: 'Session cleared. Open a note and click "Start Tutoring".',
+  sessionHistoryTitle: 'Session History',
+  sessionHistoryEmpty: 'No sessions found.',
+  continueLabel: 'Continue',
+  deleteLabel: 'Delete',
+  conceptsLabel: 'concepts',
+  messagesLabel: 'messages',
+  completedLabel: 'completed',
+  inProgressLabel: 'in progress',
+  loading: 'Loading',
+  sessionNotFound: 'Session not found.',
+  closeLabel: 'Close',
   noPanel: 'Please open the Socratic Tutor panel first.',
   noApiKey: 'Please configure your API key in plugin settings first.',
   noNote: 'Please open a note to start tutoring.',
@@ -151,6 +173,17 @@ const zh: TranslationMap = {
   resumeResume: '继续上次会话',
   resumeRestart: '重新开始',
   sessionCleared: '已清除会话。打开笔记并点击"开始辅导"。',
+  sessionHistoryTitle: '会话历史',
+  sessionHistoryEmpty: '没有找到会话记录。',
+  continueLabel: '继续',
+  deleteLabel: '删除',
+  conceptsLabel: '个概念',
+  messagesLabel: '条消息',
+  completedLabel: '已完成',
+  inProgressLabel: '进行中',
+  loading: '加载中',
+  sessionNotFound: '会话未找到。',
+  closeLabel: '关闭',
   noPanel: '请先打开苏格拉底导师面板。',
   noApiKey: '请先在插件设置中配置 API 密钥。',
   noNote: '请打开一篇笔记以开始辅导。',

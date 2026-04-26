@@ -4,6 +4,7 @@ import { Thread } from './components/Thread';
 import { ProgressPanel } from './components/ProgressPanel';
 import { SelfAssessment } from './components/SelfAssessment';
 import { SessionResume } from './components/SessionResume';
+import { SessionHistory } from './components/SessionHistory';
 import type { ReactSocraticView } from '../ReactSocraticView';
 
 interface SocraticAppProps {
@@ -19,15 +20,25 @@ export function SocraticApp({ view }: SocraticAppProps) {
 }
 
 function SocraticAppInner() {
-  const { t, isSessionActive, isProcessing, dialogState, resolveSelfAssessment, resolveSessionResume } = useSocratic();
+  const { t, isSessionActive, isProcessing, dialogState, resolveSelfAssessment, resolveSessionResume, showHistory, setShowHistory } = useSocratic();
 
   return (
     <div className="socratic-view">
       <div className="socratic-header">
         <h3>{t.viewTitle}</h3>
-        <span className="socratic-status">
-          {isSessionActive ? t.viewStatusReady : t.noActiveSession}
-        </span>
+        <div className="socratic-header-actions">
+          <span className="socratic-status">
+            {isSessionActive ? t.viewStatusReady : t.noActiveSession}
+          </span>
+          <button
+            className="socratic-btn socratic-btn-ghost"
+            onClick={() => setShowHistory(true)}
+            disabled={isProcessing}
+            title={t.sessionHistoryTitle}
+          >
+            {t.sessionHistoryTitle}
+          </button>
+        </div>
       </div>
       {isSessionActive && <ProgressPanel />}
       <Thread />
@@ -47,6 +58,12 @@ function SocraticAppInner() {
             onSelect={resolveSelfAssessment}
             disabled={false}
           />
+        </div>
+      )}
+
+      {showHistory && (
+        <div className="socratic-dialog-overlay">
+          <SessionHistory />
         </div>
       )}
     </div>

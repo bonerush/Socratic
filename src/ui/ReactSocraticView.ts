@@ -17,6 +17,7 @@ export interface ViewState {
   processingPhase: string | null;
   selfAssessment: { resolve: (level: SelfAssessmentLevel) => void } | null;
   sessionResume: { resolve: (choice: 'resume' | 'restart') => void } | null;
+  showHistory: boolean;
   [key: string]: unknown;
 }
 
@@ -40,6 +41,7 @@ export class ReactSocraticView extends ItemView {
     processingPhase: null,
     selfAssessment: null,
     sessionResume: null,
+    showHistory: false,
   };
   private listeners = new Set<() => void>();
 
@@ -164,6 +166,10 @@ export class ReactSocraticView extends ItemView {
 
   setSessionActive(active: boolean): void {
     this.updateState({ isSessionActive: active });
+  }
+
+  setShowHistory(show: boolean): void {
+    this.updateState({ showHistory: show });
   }
 
   updateProgress(session: SessionState): void {

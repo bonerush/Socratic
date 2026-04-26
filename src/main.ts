@@ -8,6 +8,7 @@ import {
   VIEW_TYPE_SOCRATIC, DEFAULT_SETTINGS, emptyMemoryCollection,
   type SessionState, type ConceptState,
   type SelfAssessmentLevel, type MasteryDimension, type TutorMessage, type SocraticPluginSettings,
+  type SessionSummary,
 } from './types';
 import { generateId, slugify } from './utils/helpers';
 import { getTranslations, resolveLang, type Lang } from './i18n/translations';
@@ -212,6 +213,40 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     }
   }
 
+  async listSessionHistory(): Promise<SessionSummary[]> {
+    return this.sessionManager.listSessions();
+  }
+
+  async loadSessionFromHistory(slug: string): Promise<void> {
+    const view = this.getReactView();
+    if (!view) return;
+    const loaded = await this.sessionManager.loadSession(slug);
+    if (!loaded) {
+      view.showError(this.t.sessionNotFound || 'Session not found');
+      return;
+    }
+    this.session = loaded;
+    view.clearMessages();
+    view.setSessionActive(true);
+    for (const msg of this.session.messages) {
+      view.addMessage(msg);
+    }
+    view.updateProgress(this.session);
+  }
+
+  async deleteSessionFromHistory(slug: string): Promise<void> {
+    await this.sessionManager.deleteSession(slug);
+    if (this.session?.noteSlug === slug) {
+      this.session = null;
+      const view = this.getReactView();
+      if (view) {
+        view.clearMessages();
+        view.setSessionActive(false);
+        view.showError(this.t.sessionCleared);
+      }
+    }
+  }
+
   async openRoadmap(): Promise<void> {
     if (!this.session) return;
     const roadmapPath = `${this.sessionManager.getSessionDir(this.session.noteSlug)}/roadmap.html`;
@@ -232,32 +267,29 @@ export default class SocraticNoteTutorPlugin extends Plugin {
 
   async processUserResponse(text: string): Promise<void> {
     if (!this.session) return;
-
     this.updateLanguageFromText(text);
-
-    this.session.messages.push({
-      id: generateId(),
-      role: 'user',
-      type: 'answer',
-      content: text,
-      timestamp: Date.now(),
-    });
+    this.appendUserMessage('answer', text);
     await this.continueTutoring();
   }
 
   async processChoiceSelection(option: string, _index: number): Promise<void> {
     if (!this.session) return;
-
     this.updateLanguageFromText(option);
+    this.appendUserMessage('choice-result', option);
+    await this.continueTutoring();
+  }
 
-    this.session.messages.push({
+  private appendUserMessage(type: 'answer' | 'choice-result', content: string): void {
+    if (!this.session) return;
+    const msg: TutorMessage = {
       id: generateId(),
       role: 'user',
-      type: 'choice-result',
-      content: option,
+      type,
+      content,
       timestamp: Date.now(),
-    });
-    await this.continueTutoring();
+    };
+    this.session.messages.push(msg);
+    this.getReactView()?.addMessage(msg);
   }
 
   private async startNewSessionWithNote(noteTitle: string, noteContent: string): Promise<void> {
