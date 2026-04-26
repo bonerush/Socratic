@@ -9,18 +9,26 @@ export function SessionHistory() {
 
   useEffect(() => {
     let mounted = true;
-    listSessionHistory().then((items) => {
-      if (mounted) {
-        setSessions(items);
-        setLoading(false);
-      }
-    });
+    listSessionHistory()
+      .then((items) => {
+        if (mounted) {
+          setSessions(items);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (mounted) setLoading(false);
+      });
     return () => { mounted = false; };
   }, [listSessionHistory]);
 
   const handleDelete = async (slug: string) => {
-    await deleteSessionFromHistory(slug);
-    setSessions((prev) => prev.filter((s) => s.noteSlug !== slug));
+    try {
+      await deleteSessionFromHistory(slug);
+      setSessions((prev) => prev.filter((s) => s.noteSlug !== slug));
+    } catch {
+      // Error is already shown by the plugin via view.showError
+    }
   };
 
   return (
