@@ -228,6 +228,31 @@ export class SocraticEngine {
         return { concepts: extracted };
       }
 
+      // Second attempt: strict JSON-only prompt without tool calling.
+      // Some models ignore tool calling or return preamble text; a stripped-down
+      // prompt often forces them into JSON-only mode.
+      const retryPrompt = `Analyze the note content and extract 5-15 atomic concepts. Output ONLY a JSON object with this exact structure (no markdown, no explanation, no preamble):
+
+{"concepts":[{"id":"concept-slug","name":"Concept Name","description":"Brief description","dependencies":["other-slug"]}]}
+
+Requirements:
+- Each concept has: id (slug format), name, description, dependencies (array of concept ids it depends on)
+- Order from basic to advanced
+- Use the same language as the note content`;
+      const retryResponse = await this.llm.chat(systemPrompt, [
+        { role: 'user', content: retryPrompt },
+      ], 0.3, 2000);
+
+      const retryParsed = this.parseStructuredResponse(retryResponse);
+      if (retryParsed.concepts && Array.isArray(retryParsed.concepts) && retryParsed.concepts.length > 0) {
+        return { concepts: retryParsed.concepts };
+      }
+
+      const retryExtracted = this.tryExtractConceptsFromText(retryResponse.content || '');
+      if (retryExtracted.length > 0) {
+        return { concepts: retryExtracted };
+      }
+
       throw new Error(
         `Failed to extract concepts from the note content. ` +
         `Raw response: ${rawContent.slice(0, 500)}`,
@@ -240,29 +265,47 @@ export class SocraticEngine {
   private tryExtractConceptsFromText(text: string): ExtractedConcept[] {
     // Try markdown code block first
     const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-    const jsonText = codeBlockMatch ? codeBlockMatch[1]! : text;
+    const targetText = codeBlockMatch ? codeBlockMatch[1]! : text;
 
-    // Find the outermost JSON object using non-greedy matching
-    const jsonMatch = jsonText.match(/\{[\s\S]*?\}/);
-    if (!jsonMatch) return [];
-
-    try {
-      const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
-      const concepts = parsed.concepts ?? parsed.data ?? parsed.result;
-      if (Array.isArray(concepts) && concepts.length > 0) {
-        return concepts.map((c) => ({
-          id: String((c as Record<string, unknown>).id ?? ''),
-          name: String((c as Record<string, unknown>).name ?? ''),
-          description: String((c as Record<string, unknown>).description ?? ''),
-          dependencies: Array.isArray((c as Record<string, unknown>).dependencies)
-            ? (c as Record<string, unknown>).dependencies as string[]
-            : [],
-        })).filter((c) => c.id && c.name);
+    // Scan for balanced JSON objects using a brace stack.
+    // Non-greedy regex fails on nested objects (e.g. {"concepts":[{"id":"a"}]}),
+    // so we explicitly track brace depth to find complete top-level objects.
+    const candidates = this.extractBalancedJsonObjects(targetText);
+    for (const candidate of candidates) {
+      try {
+        const parsed = JSON.parse(candidate) as Record<string, unknown>;
+        const concepts = parsed.concepts ?? parsed.data ?? parsed.result;
+        if (Array.isArray(concepts) && concepts.length > 0) {
+          return concepts.map((c) => ({
+            id: String((c as Record<string, unknown>).id ?? ''),
+            name: String((c as Record<string, unknown>).name ?? ''),
+            description: String((c as Record<string, unknown>).description ?? ''),
+            dependencies: Array.isArray((c as Record<string, unknown>).dependencies)
+              ? (c as Record<string, unknown>).dependencies as string[]
+              : [],
+          })).filter((c) => c.id && c.name);
+        }
+      } catch {
+        // Try next candidate
       }
-    } catch {
-      // Ignore parse errors
     }
     return [];
+  }
+
+  private extractBalancedJsonObjects(text: string): string[] {
+    const objects: string[] = [];
+    const stack: number[] = [];
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === '{') {
+        stack.push(i);
+      } else if (text[i] === '}' && stack.length > 0) {
+        const start = stack.pop()!;
+        if (stack.length === 0) {
+          objects.push(text.slice(start, i + 1));
+        }
+      }
+    }
+    return objects;
   }
 
   async stepAskQuestion(session: SessionState): Promise<TutorMessage> {
