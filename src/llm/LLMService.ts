@@ -2,7 +2,7 @@ import { requestUrl } from 'obsidian';
 import type { SocraticPluginSettings } from '../types';
 import type { ToolDefinition, ToolCall } from './tools';
 
-export interface LLMMessage {
+interface LLMMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
   tool_calls?: ToolCall[];
@@ -30,6 +30,10 @@ export class LLMService {
     this.settings = settings;
   }
 
+  /**
+   * Chat using pre-assembled system prompt string.
+   * Prefer `chatWithBlocks` for new code — it keeps prompt construction declarative.
+   */
   async chat(
     systemPrompt: string,
     messages: { role: 'user' | 'assistant'; content: string }[],
@@ -123,7 +127,7 @@ export class LLMService {
   }
 
   private supportsToolCalling(): boolean {
-    return this.isOpenAICompatible();
+    return !this.settings.disableToolCalling && this.isOpenAICompatible();
   }
 
   private isOpenAICompatible(): boolean {

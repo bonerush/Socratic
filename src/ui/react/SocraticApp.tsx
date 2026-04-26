@@ -1,0 +1,54 @@
+import React from 'react';
+import { SocraticProvider, useSocratic } from './SocraticContext';
+import { Thread } from './components/Thread';
+import { ProgressPanel } from './components/ProgressPanel';
+import { SelfAssessment } from './components/SelfAssessment';
+import { SessionResume } from './components/SessionResume';
+import type { ReactSocraticView } from '../ReactSocraticView';
+
+interface SocraticAppProps {
+  view: ReactSocraticView;
+}
+
+export function SocraticApp({ view }: SocraticAppProps) {
+  return (
+    <SocraticProvider view={view}>
+      <SocraticAppInner />
+    </SocraticProvider>
+  );
+}
+
+function SocraticAppInner() {
+  const { t, isSessionActive, isProcessing, dialogState, resolveSelfAssessment, resolveSessionResume } = useSocratic();
+
+  return (
+    <div className="socratic-view">
+      <div className="socratic-header">
+        <h3>{t.viewTitle}</h3>
+        <span className="socratic-status">
+          {isSessionActive ? t.viewStatusReady : t.noActiveSession}
+        </span>
+      </div>
+      {isSessionActive && <ProgressPanel />}
+      <Thread />
+
+      {dialogState.sessionResume && (
+        <div className="socratic-dialog-overlay">
+          <SessionResume
+            onChoice={resolveSessionResume}
+            disabled={false}
+          />
+        </div>
+      )}
+
+      {dialogState.selfAssessment && (
+        <div className="socratic-dialog-overlay">
+          <SelfAssessment
+            onSelect={resolveSelfAssessment}
+            disabled={false}
+          />
+        </div>
+      )}
+    </div>
+  );
+}

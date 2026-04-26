@@ -1,14 +1,20 @@
 import { type Vault, type TFile, normalizePath } from 'obsidian';
-import { SESSION_DIR, type SessionState, type LearnerProfile, type ConceptState, type MisconceptionRecord } from '../types';
+import { SESSION_DIR, type SessionState, type LearnerProfile, type ConceptState, type MisconceptionRecord, emptyMemoryCollection } from '../types';
 import { slugify } from '../utils/helpers';
+import { MemoryManager } from '../memory/MemoryManager';
+import { MemoryExtractor } from '../memory/MemoryExtractor';
 
 export class SessionManager {
   private vault: Vault;
   private basePath: string;
+  memoryManager: MemoryManager;
+  memoryExtractor: MemoryExtractor;
 
   constructor(vault: Vault, customBasePath?: string) {
     this.vault = vault;
     this.basePath = customBasePath || SESSION_DIR;
+    this.memoryManager = new MemoryManager(vault, this.basePath);
+    this.memoryExtractor = new MemoryExtractor();
   }
 
   getSessionDir(noteSlug: string): string {
@@ -50,7 +56,12 @@ export class SessionManager {
       const exists = await this.vault.adapter.exists(path);
       if (!exists) return null;
       const content = await this.vault.adapter.read(path);
-      return JSON.parse(this.extractJsonFromMarkdown(content)) as LearnerProfile;
+      const profile = JSON.parse(this.extractJsonFromMarkdown(content)) as LearnerProfile;
+      // Ensure new fields exist on legacy profiles
+      if (!profile.memories) profile.memories = emptyMemoryCollection();
+      if (!profile.preferredConcepts) profile.preferredConcepts = [];
+      if (!profile.strugglingConcepts) profile.strugglingConcepts = [];
+      return profile;
     } catch {
       return null;
     }

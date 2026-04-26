@@ -55,6 +55,16 @@ export class SocraticSettingTab extends PluginSettingTab {
           await this.plugin.saveSettings();
         }));
 
+    new Setting(containerEl)
+      .setName('禁用工具调用')
+      .setDesc('如果你的 API 代理不支持 function calling，启用此项可让 LLM 以纯 JSON 格式响应')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.disableToolCalling)
+        .onChange(async value => {
+          this.plugin.settings.disableToolCalling = value;
+          await this.plugin.saveSettings();
+        }));
+
     const currentLang = this.plugin.settings.language;
 
     new Setting(containerEl)

@@ -93,8 +93,19 @@
 }
 
 @keyframes messageIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes optionPulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--interactive-accent) 28%, transparent); }
+  70% { box-shadow: 0 0 0 10px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
 .socratic-message-tutor {
@@ -231,7 +242,7 @@
 .socratic-message-content td {
   border: 1px solid var(--background-modifier-border);
   padding: 6px 10px;
-  text-align: left;
+  text-align: left !important;
 }
 .socratic-message-content th {
   background: var(--background-secondary);
@@ -261,7 +272,9 @@
 
 .socratic-message:has(.socratic-options) {
   max-width: 100%;
+  width: 100%;
   align-self: stretch;
+  min-width: 0;
 }
 
 .socratic-option-btn {
@@ -276,8 +289,11 @@
   text-align: left !important;
   transition: all 0.18s ease;
   overflow-wrap: break-word;
+  word-break: break-word;
   white-space: normal;
   hyphens: auto;
+  height: auto;
+  min-height: 0;
   width: 100%;
   box-sizing: border-box;
   position: relative;
@@ -313,12 +329,44 @@
   background: var(--background-secondary);
 }
 
+/* ── Typing Indicator ── */
+
 .socratic-typing {
-  opacity: 0.6;
+  opacity: 0.75;
 }
 
-.socratic-typing-dots {
-  animation: blink 1.2s infinite;
+.socratic-typing-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+}
+
+.socratic-typing-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--background-modifier-border);
+  border-top-color: var(--interactive-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.socratic-typing-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.socratic-typing-text {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  font-weight: 500;
 }
 
 .socratic-streaming-cursor::after {
@@ -330,11 +378,6 @@
 @keyframes cursorBlink {
   0%, 100% { opacity: 0.7; }
   50% { opacity: 0; }
-}
-
-@keyframes blink {
-  0%, 100% { opacity: 0.3; }
-  50% { opacity: 1; }
 }
 
 /* ── Input Area ── */
@@ -429,4 +472,147 @@
 
 .socratic-messages::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
+}
+
+/* ── React Components ── */
+
+.socratic-thread {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.socratic-message-bubble {
+  width: 100%;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.socratic-message-tutor:hover .socratic-message-bubble {
+  transform: translateY(-1px);
+}
+
+.socratic-option-btn-pulse {
+  animation: optionPulse 1.2s ease-out;
+}
+
+.socratic-welcome-icon {
+  margin-bottom: 12px;
+  opacity: 0.4;
+}
+
+.socratic-welcome-title {
+  font-size: 18px;
+  font-weight: 650;
+  margin: 0 0 8px;
+  color: var(--text-normal);
+}
+
+.socratic-welcome-hint {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0 0 24px;
+}
+
+.socratic-welcome-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.socratic-assessment {
+  width: 100%;
+}
+
+.socratic-resume-dialog {
+  width: 100%;
+}
+
+.socratic-input-area {
+  position: relative;
+}
+
+.socratic-input {
+}
+
+.socratic-option-btn-selected {
+  background: var(--interactive-accent) !important;
+  color: var(--text-on-accent) !important;
+  border-color: var(--interactive-accent) !important;
+}
+
+.socratic-assessment-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.socratic-resume-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.socratic-resume-actions .socratic-btn {
+  flex: 1;
+  text-align: center;
+  padding: 10px 14px;
+}
+
+.socratic-dialog-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 24px;
+}
+
+.socratic-dialog-overlay .socratic-message {
+  max-width: 420px;
+  width: 100%;
+  background: var(--background-primary);
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+}
+
+.socratic-progress-stats {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  text-align: right;
+}
+
+.socratic-option-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--background-modifier-border);
+  font-size: 12px;
+  font-weight: 600;
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+.socratic-option-btn {
+  display: flex;
+  align-items: flex-start;
+}
+
+.socratic-option-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.socratic-option-btn-selected .socratic-option-label {
+  background: rgba(255, 255, 255, 0.25);
+  color: var(--text-on-accent);
 }

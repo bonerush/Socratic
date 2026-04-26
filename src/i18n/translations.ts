@@ -37,6 +37,15 @@ export interface TranslationMap {
   conceptExtractFailed: string;
   tutoringError: string;
   emptyInput: string;
+  conceptTransition: string;
+  // Processing phases shown in TypingIndicator
+  phaseDiagnosis: string;
+  phaseExtractConcepts: string;
+  phaseAskQuestion: string;
+  phaseMasteryCheck: string;
+  phasePracticeTask: string;
+  phaseReview: string;
+  phaseFinalize: string;
   // Settings
   settingsTitle: string;
   apiEndpointLabel: string;
@@ -95,6 +104,14 @@ const en: TranslationMap = {
   conceptExtractFailed: 'Failed to analyze concepts',
   tutoringError: 'Error',
   emptyInput: 'Please enter your answer.',
+  conceptTransition: 'Identified key concepts. Beginning guided learning.',
+  phaseDiagnosis: 'Diagnosing',
+  phaseExtractConcepts: 'Building concept map',
+  phaseAskQuestion: 'Crafting question',
+  phaseMasteryCheck: 'Checking mastery',
+  phasePracticeTask: 'Designing practice',
+  phaseReview: 'Preparing review',
+  phaseFinalize: 'Wrapping up',
   settingsTitle: 'Socratic Note Tutor Settings',
   apiEndpointLabel: 'API endpoint',
   apiEndpointDesc: 'The API endpoint for the LLM service (e.g. OpenAI, Anthropic, or local LLM).',
@@ -152,6 +169,14 @@ const zh: TranslationMap = {
   conceptExtractFailed: '分析概念失败',
   tutoringError: '出错',
   emptyInput: '请输入你的回答。',
+  conceptTransition: '已识别关键概念，开始引导式学习。',
+  phaseDiagnosis: '诊断中',
+  phaseExtractConcepts: '构建概念图谱中',
+  phaseAskQuestion: '生成问题中',
+  phaseMasteryCheck: '评估掌握度中',
+  phasePracticeTask: '设计练习任务中',
+  phaseReview: '生成复习问题中',
+  phaseFinalize: '生成总结中',
   settingsTitle: '苏格拉底笔记导师 - 设置',
   apiEndpointLabel: 'API 接口地址',
   apiEndpointDesc: 'LLM 服务的 API 接口地址（如 OpenAI、Anthropic 或本地 LLM）。',

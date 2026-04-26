@@ -1,92 +1,232 @@
-import type { SessionState, LearnerProfile } from '../types';
+import type { SessionState, ConceptState } from '../types';
 import { getToolDescriptions } from './tools';
 
-export class PromptBuilder {
-  buildSystemPrompt(noteContent: string, learnerProfile?: LearnerProfile | null, language?: string): string {
-    const profileSection = learnerProfile
-      ? `\n## Learner Profile\nThis learner has the following traits from previous sessions:\n- Learning style: ${learnerProfile.learningStyle}\n- Common misconception patterns: ${learnerProfile.commonMisconceptionPatterns.join(', ')}\n- Previous sessions completed: ${learnerProfile.sessionCount}\n`
-      : '';
+export interface SystemPromptContext {
+  noteContent: string;
+  phase: 'diagnosis' | 'teaching' | 'mastery-check' | 'practice' | 'review' | 'finalize';
+  currentConcept?: ConceptState | null;
+  conceptProgress: { mastered: number; total: number };
+  language: string;
+  conversationSummary?: string;
+}
 
-    return `You are a Socratic tutor implementing Bloom's 2-Sigma mastery learning method. Your ONLY role is to ask questions that guide the student to discover answers themselves — you NEVER give direct answers.
+export interface PromptBlock {
+  id: string;
+  content: string;
+  priority: number;
+}
 
-## Core Rules (NEVER Violate)
-1. NEVER give direct answers — only ask guiding questions, request explanations, give minimal hints, or present counterexamples.
-2. Diagnose first — assess the student's existing knowledge before diving into content.
-3. Mastery gate — each concept requires ≥80% score across correctness, explanation depth, novel application, and concept discrimination before advancing.
-4. Ask 1-2 questions per turn — keep focus, don't pile on.
-5. Be patient but rigorous — encourage, but never let misunderstandings slide. Use counterexamples to let the student discover contradictions.
-6. Match the user's language — keep technical terms in original with brief explanations.
+// ── Priority constants ──────────────────────────────────────
+const P_IDENTITY = 10;
+const P_CORE_RULES = 20;
+const P_METHODOLOGY = 30;
+const P_PHASE = 40;
+const P_PROGRESS = 50;
+const P_SUMMARY = 60;
+const P_CONTEXT = 70;
+const P_TOOLS = 80;
+const P_RESPONSE_FORMAT = 90;
+const P_LANGUAGE = 100;
+
+// ── Static blocks ───────────────────────────────────────────
+
+const IDENTITY_BLOCK: PromptBlock = {
+  id: 'identity',
+  priority: P_IDENTITY,
+  content: `你是一位苏格拉底式导师，使用 Bloom 的 2-Sigma 掌握学习法。你的唯一角色是提出引导性问题，帮助学生自己发现答案——你从不直接给出答案。`,
+};
+
+const CORE_RULES_BLOCK: PromptBlock = {
+  id: 'core-rules',
+  priority: P_CORE_RULES,
+  content: `## 核心规则（绝不能违反）
+1. 绝不要直接给出答案——只提出引导性问题、要求解释、给出最小提示或呈现反例。
+2. 先诊断——在深入内容之前评估学生已有的知识。
+3. 掌握门控——每个概念在正确性、解释深度、新颖应用和概念区分方面需要 80%+ 的分数才能进阶。
+4. 每轮问 1-2 个问题——保持专注，不要堆砌。
+5. 要有耐心但要严格——鼓励学生，但绝不要让误解滑过。使用反例让学生发现矛盾。
+6. 匹配用户的语言——保留技术术语的原词并附简要解释。
 7. ALL teaching must be based SOLELY on the provided note content — do not introduce external information.
-8. Skip social niceties — no "thank you", "congratulations", "great job", "let me analyze", or "welcome back" messages. Start directly with your question or feedback, but always produce substantive teaching content.
+8. Skip social niceties — no "thank you", "congratulations", "great job", "let me analyze", or "welcome back" messages. Start directly with your question or feedback, but always produce substantive teaching content.`,
+};
 
-## Note Content to Teach
-\`\`\`
-${noteContent}
-\`\`\`
-${profileSection}
-## Language
-Respond in ${language === 'zh' ? 'Chinese (中文)' : 'English'}. All tutoring dialogue must be in this language.
+const METHODOLOGY_BLOCK: PromptBlock = {
+  id: 'methodology',
+  priority: P_METHODOLOGY,
+  content: `## 方法论
+- 使用 Bloom 分类法：记忆 → 理解 → 应用 → 分析 → 评估 → 创造。
+- 小心搭建脚手架：建立在学生已知的基础上。
+- 当学生卡住时，用更简单的子问题降低认知负荷，而不是给出答案。
+- 显式追踪误解：如果学生暴露出误解，用反例来探查。`,
+};
 
-## Available Tools
-You have access to the following tools. Call them to interact with the student:
+const TOOLS_BLOCK: PromptBlock = {
+  id: 'tools',
+  priority: P_TOOLS,
+  content: `## Available Tools
+You may call the following tools to interact with the student:
 
-${getToolDescriptions().split('\n').map(line => `\t${line}`).join('\n')}
+${getToolDescriptions().split('\n').map(line => `\t${line}`).join('\n')}`,
+};
 
-## Response Format
-Use the appropriate tool based on what you want to do:
-- To ask a question → call \`ask_question\` (选择题工具 / 解答题工具)
-- To give guidance/hints/feedback → call \`provide_guidance\`
-- To assess mastery → call \`assess_mastery\`
-- To extract concepts → call \`extract_concepts\`
-- To send informational messages → call \`send_info\`
+const RESPONSE_FORMAT_BLOCK: PromptBlock = {
+  id: 'response-format',
+  priority: P_RESPONSE_FORMAT,
+  content: `## Response Format
+Use the appropriate tool for what you want to do:
+- Ask a question → call \`ask_question\`
+- Provide guidance / hint / feedback → call \`provide_guidance\`
+- Assess mastery → call \`assess_mastery\`
+- Extract concepts → call \`extract_concepts\`
+- Send an informational message → call \`send_info\`
 
-IMPORTANT: When function calling is not available, respond in JSON format:
+Important: when function calling is unavailable, respond in JSON:
 {
   "tool": "ask_question" | "provide_guidance" | "assess_mastery" | "extract_concepts" | "send_info",
-  "content": "Your message to the student",
+  "content": "your message",
   "questionType": "multiple-choice" | "open-ended" | null,
-  "options": ["Option A", "Option B", "Option C", "Option D"] | null,
+  "options": [...],
   "correctOptionIndex": 0 | null,
   "conceptId": "current-concept-id",
-  "masteryCheck": { "correctness": bool, "explanationDepth": bool, "novelApplication": bool, "conceptDiscrimination": bool } | null,
-  "misconceptionDetected": { "misconception": "description", "rootCause": "inferred cause" } | null
-}`;
+  "masteryCheck": { ... },
+  "misconceptionDetected": { ... }
+}`,
+};
+
+// ── Dynamic block builders ──────────────────────────────────
+
+function buildPhaseBlock(phase: string, currentConceptName?: string): PromptBlock {
+  const phaseDescriptions: Record<string, string> = {
+    diagnosis: 'You are diagnosing the student\'s current knowledge level. Assess their understanding — do not start teaching yet.',
+    teaching: `You are teaching the concept "${currentConceptName || 'unknown'}". Ask guiding questions to help the student discover the answer.`,
+    'mastery-check': `You are checking mastery of the concept "${currentConceptName || 'unknown'}". Evaluate across 4 dimensions: factual correctness, explanation depth, novel application, and concept discrimination.`,
+    practice: 'The student has just demonstrated mastery of a concept. Assign a short practice task to consolidate understanding.',
+    review: 'This is a review question. Ask a quick question to check retention of an already-mastered concept.',
+    finalize: 'The session is wrapping up. Provide a summary and follow-up recommendations.',
+  };
+
+  return {
+    id: 'phase',
+    priority: P_PHASE,
+    content: `## Current Phase\n${phaseDescriptions[phase] || phaseDescriptions['teaching']}`,
+  };
+}
+
+function buildProgressBlock(mastered: number, total: number): PromptBlock {
+  return {
+    id: 'progress',
+    priority: P_PROGRESS,
+    content: `## Learning Progress\nMastered ${mastered}/${total} concepts.`,
+  };
+}
+
+function buildConversationSummaryBlock(summary: string): PromptBlock {
+  return {
+    id: 'conversation-summary',
+    priority: P_SUMMARY,
+    content: `## Conversation Summary (early content)\n${summary}`,
+  };
+}
+
+function buildContextBlock(noteContent: string): PromptBlock {
+  return {
+    id: 'note-context',
+    priority: P_CONTEXT,
+    content: `## Note Content\n\`\`\`\n${noteContent}\n\`\`\``,
+  };
+}
+
+function buildLanguageBlock(language: string): PromptBlock {
+  const langInstruction =
+    language === 'zh'
+      ? 'Chinese (中文)'
+      : language === 'auto'
+        ? 'the same language as the note content (prefer Chinese if the note is in Chinese)'
+        : 'English';
+  return {
+    id: 'language',
+    priority: P_LANGUAGE,
+    content: `## Language (OVERRIDES ALL OTHER LANGUAGE INSTRUCTIONS)\nYou MUST respond entirely in ${langInstruction}. Every sentence, every word of your response must be in ${langInstruction}. This instruction takes absolute precedence over any other language cues in this prompt.`,
+  };
+}
+
+// ── Assembly ────────────────────────────────────────────────
+
+export function assembleBlocks(blocks: PromptBlock[]): string {
+  return blocks
+    .slice()
+    .sort((a, b) => a.priority - b.priority)
+    .map((b) => `<!-- ${b.id} -->\n${b.content}`)
+    .join('\n\n');
+}
+
+// ── PromptBuilder class ─────────────────────────────────────
+
+export class PromptBuilder {
+  buildSystemPrompt(ctx: SystemPromptContext): PromptBlock[] {
+    const blocks: PromptBlock[] = [
+      IDENTITY_BLOCK,
+      CORE_RULES_BLOCK,
+      METHODOLOGY_BLOCK,
+      buildPhaseBlock(ctx.phase, ctx.currentConcept?.name),
+      buildLanguageBlock(ctx.language),
+      TOOLS_BLOCK,
+      RESPONSE_FORMAT_BLOCK,
+    ];
+
+    if (ctx.conceptProgress.total > 0) {
+      blocks.push(buildProgressBlock(ctx.conceptProgress.mastered, ctx.conceptProgress.total));
+    }
+
+    if (ctx.conversationSummary) {
+      blocks.push(buildConversationSummaryBlock(ctx.conversationSummary));
+    }
+
+    blocks.push(buildContextBlock(ctx.noteContent));
+
+    return blocks;
   }
 
   buildDiagnosisPrompt(): string {
-    return 'Please start by diagnosing the student\'s current understanding. Ask 1-2 questions (mix of multiple-choice and open-ended) to assess their existing knowledge about this topic. Do not teach yet — just diagnose.';
+    return '请先诊断学生的当前理解程度。问 1-2 个问题（选择题和开放题混合）来评估他们对这个主题的已有知识。现在还不要教学——只做诊断。';
   }
 
   buildConceptExtractionPrompt(): string {
-    return `Analyze the note content and extract 5-15 atomic concepts/key知识点 that the student needs to master. For each concept, provide:
-1. A unique ID (slug format, e.g., "python-decorators")
-2. A clear name
-3. A brief description
-4. Dependencies (which concepts should be learned before this one)
+    return `分析笔记内容并提取 5-15 个原子概念/知识点，学生需要掌握这些内容。对每个概念提供：
+1. 唯一 ID（slug 格式，如 "python-decorators"）
+2. 清晰的名称
+3. 简要描述
+4. 依赖关系（应该先学习哪些概念）
 
-Use the \`extract_concepts\` tool to return the extracted concepts. If function calling is not available, respond in JSON format:
+使用 \`extract_concepts\` 工具返回提取的概念。如果函数调用不可用，请以 JSON 格式回复：
 {
   "tool": "extract_concepts",
   "concepts": [
-    {
-      "id": "concept-slug",
-      "name": "Concept Name",
-      "description": "Brief description",
-      "dependencies": ["dependency-id-1"]
-    }
+    { "id": "concept-slug", "name": "概念名称", "description": "简要描述", "dependencies": ["dependency-id-1"] }
   ]
 }
 
-Order concepts from foundational to advanced based on their dependency relationships.`;
+按从基础到高级的顺序排列概念，基于它们的依赖关系。`;
   }
 
   buildMasteryCheckPrompt(conceptName: string): string {
-    return `Conduct a mastery check for the concept "${conceptName}". Ask questions covering all 4 dimensions:
-1. Correctness (factual accuracy)
-2. Explanation depth (can explain "why")
-3. Novel application (can handle unseen scenarios)
-4. Concept discrimination (can distinguish from similar concepts)
+    return `对概念 "${conceptName}" 进行掌握度检查。提问覆盖所有 4 个维度：
+1. 正确性（事实准确性）
+2. 解释深度（能解释"为什么"）
+3. 新颖应用（能处理未见过的场景）
+4. 概念区分（能区分相似概念）
 
-Score each dimension in your response's masteryCheck field.`;
+在响应的 masteryCheck 字段中为每个维度打分。`;
+  }
+
+  buildConversationSummaryPrompt(messages: { role: string; content: string }[]): string {
+    const history = messages.map(m => `[${m.role}]: ${m.content}`).join('\n');
+    return `请用中文总结以下对话的核心内容（不超过 4 句话）：
+- 当前讨论了哪些主题
+- 学生展示了什么水平
+- 下一篇可能要讨论什么
+
+对话：
+${history}`;
   }
 }

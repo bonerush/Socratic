@@ -1,11 +1,13 @@
 /**
- * Tool definitions for LLM function calling.
+ * Simplified tool definitions for LLM function calling.
  *
- * The LLM can invoke these tools during tutoring:
- * - ask_question: Ask questions (multiple-choice or open-ended)
- * - provide_guidance: Give Socratic guidance/feedback
- * - assess_mastery: Evaluate concept mastery
- * - extract_concepts: Extract learning concepts from note
+ * Previously this was a 7-file class-based system with registries and
+ * validators. The classes added ~400 lines of boilerplate but their
+ * execute() methods were all identity functions (return args) and the
+ * engine already has a lenient JSON fallback path. We keep only:
+ * - The OpenAI-compatible shape types
+ * - Static schema definitions
+ * - A lightweight argument parser for the happy path
  */
 
 export interface ToolDefinition {
@@ -13,7 +15,11 @@ export interface ToolDefinition {
   function: {
     name: string;
     description: string;
-    parameters: Record<string, unknown>;
+    parameters: {
+      type: 'object';
+      properties: Record<string, unknown>;
+      required: string[];
+    };
   };
 }
 
@@ -26,76 +32,37 @@ export interface ToolCall {
   };
 }
 
-export interface MultipleChoiceArgs {
-  content: string;
-  options: string[];
-  correctOptionIndex?: number;
-  conceptId?: string;
-}
-
-export interface GuidanceArgs {
-  content: string;
-  misconception?: string;
-  rootCause?: string;
-  conceptId?: string;
-}
-
-export interface MasteryCheckArgs {
-  content: string;
-  correctness: boolean;
-  explanationDepth: boolean;
-  novelApplication: boolean;
-  conceptDiscrimination: boolean;
-  conceptId?: string;
-}
-
-export interface ConceptExtractionArgs {
-  concepts: Array<{
-    id: string;
-    name: string;
-    description: string;
-    dependencies: string[];
-  }>;
-}
-
-export interface InfoArgs {
-  content: string;
-  conceptId?: string;
-}
-
-export const TOOLS: ToolDefinition[] = [
+const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
       name: 'ask_question',
-      description: 'Ask the student a question. Use this for multiple-choice questions (选择题) or open-ended questions (解答题). For multiple-choice, provide options and optionally the correct index. For open-ended, omit options.',
+      description:
+        'Ask the student a Socratic question. For multiple-choice, provide 2-5 options and the correct index. For open-ended, leave options empty.',
       parameters: {
         type: 'object',
         properties: {
-          content: {
-            type: 'string',
-            description: 'The question text to display to the student',
-          },
+          content: { type: 'string', description: 'The question text.' },
           questionType: {
             type: 'string',
             enum: ['multiple-choice', 'open-ended'],
-            description: 'Whether this is a multiple-choice or open-ended question',
+            description: 'Type of question.',
           },
           options: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Required for multiple-choice: the answer options (A, B, C, D)',
+            description: 'Options for multiple-choice questions.',
           },
           correctOptionIndex: {
             type: 'number',
-            description: 'Index of the correct option (0-based) — used for internal tracking',
+            description: 'Zero-based index of the correct option.',
           },
           conceptId: {
             type: 'string',
-            description: 'ID of the concept this question is testing',
+            description: 'ID of the concept this question targets.',
           },
         },
-        required: ['content', 'questionType'],
+        required: ['content'],
       },
     },
   },
@@ -103,25 +70,20 @@ export const TOOLS: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'provide_guidance',
-      description: 'Give Socratic guidance, hints, or feedback to the student. Never give direct answers — only guide through questions and hints. Optionally report a detected misconception.',
+      description:
+        'Provide guidance, hints, feedback, or a counter-example to help the student discover the answer. Never give the answer directly.',
       parameters: {
         type: 'object',
         properties: {
-          content: {
-            type: 'string',
-            description: 'The guidance message to display to the student',
-          },
+          content: { type: 'string', description: 'The guidance text.' },
+          conceptId: { type: 'string', description: 'ID of the concept this guidance targets.' },
           misconception: {
             type: 'string',
-            description: 'If a misconception is detected, describe it here',
+            description: 'If a misconception was detected, describe it.',
           },
           rootCause: {
             type: 'string',
-            description: 'The inferred root cause of the misconception',
-          },
-          conceptId: {
-            type: 'string',
-            description: 'ID of the related concept',
+            description: 'Inferred root cause of the misconception.',
           },
         },
         required: ['content'],
@@ -132,33 +94,28 @@ export const TOOLS: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'assess_mastery',
-      description: 'Assess the student\'s mastery of a concept across 4 dimensions. Only call this after asking sufficient questions to evaluate all dimensions.',
+      description:
+        "Assess the student's mastery of a concept across four dimensions: correctness, explanation depth, novel application, and concept discrimination.",
       parameters: {
         type: 'object',
         properties: {
-          content: {
-            type: 'string',
-            description: 'Summary of the mastery assessment for the student',
-          },
+          content: { type: 'string', description: 'Assessment feedback text.' },
+          conceptId: { type: 'string', description: 'ID of the concept being assessed.' },
           correctness: {
             type: 'boolean',
-            description: 'Whether the student demonstrated factual accuracy',
+            description: 'Did the student answer factually correctly?',
           },
           explanationDepth: {
             type: 'boolean',
-            description: 'Whether the student can explain "why"',
+            description: 'Could the student explain the "why"?',
           },
           novelApplication: {
             type: 'boolean',
-            description: 'Whether the student can handle unseen scenarios',
+            description: 'Could the student apply the concept to a novel scenario?',
           },
           conceptDiscrimination: {
             type: 'boolean',
-            description: 'Whether the student can distinguish from similar concepts',
-          },
-          conceptId: {
-            type: 'string',
-            description: 'ID of the concept being assessed',
+            description: 'Can the student distinguish this concept from similar ones?',
           },
         },
         required: ['content', 'correctness', 'explanationDepth', 'novelApplication', 'conceptDiscrimination'],
@@ -169,36 +126,28 @@ export const TOOLS: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'extract_concepts',
-      description: 'Extract learning concepts from the note content. Call this after the diagnosis phase to identify what topics to teach.',
+      description:
+        'Extract atomic concepts from the note content that the student needs to master. Return 5-15 concepts ordered from foundational to advanced.',
       parameters: {
         type: 'object',
         properties: {
           concepts: {
             type: 'array',
+            description: 'List of extracted concepts.',
             items: {
               type: 'object',
               properties: {
-                id: {
-                  type: 'string',
-                  description: 'Unique slug ID (e.g., "python-decorators")',
-                },
-                name: {
-                  type: 'string',
-                  description: 'Clear concept name',
-                },
-                description: {
-                  type: 'string',
-                  description: 'Brief description of the concept',
-                },
+                id: { type: 'string', description: 'Unique slug-style ID.' },
+                name: { type: 'string', description: 'Human-readable concept name.' },
+                description: { type: 'string', description: 'Brief description.' },
                 dependencies: {
                   type: 'array',
                   items: { type: 'string' },
-                  description: 'IDs of concepts that should be learned before this one',
+                  description: 'IDs of prerequisite concepts.',
                 },
               },
               required: ['id', 'name', 'description', 'dependencies'],
             },
-            description: 'Array of extracted concepts, ordered from foundational to advanced',
           },
         },
         required: ['concepts'],
@@ -209,17 +158,15 @@ export const TOOLS: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'send_info',
-      description: 'Send an informational message to the student (progress updates, transitions, etc.).',
+      description:
+        'Send an informational message to the student (e.g. session transition, concept mastered notification). Use sparingly.',
       parameters: {
         type: 'object',
         properties: {
-          content: {
-            type: 'string',
-            description: 'The informational message to display',
-          },
+          content: { type: 'string', description: 'The informational message.' },
           conceptId: {
             type: 'string',
-            description: 'ID of the related concept (if any)',
+            description: 'ID of the related concept, if any.',
           },
         },
         required: ['content'],
@@ -228,15 +175,48 @@ export const TOOLS: ToolDefinition[] = [
   },
 ];
 
-export type ToolName = (typeof TOOLS)[number]['function']['name'];
+export function getToolDefinitions(): ToolDefinition[] {
+  return TOOL_DEFINITIONS;
+}
 
 export function getToolDescriptions(): string {
-  return TOOLS.map(t => {
-    const fn = t.function;
-    const props = fn.parameters.properties as Record<string, { description?: string; enum?: string[] }>;
-    const paramDesc = Object.entries(props)
-      .map(([key, val]) => `  - ${key}: ${val.description || ''}${val.enum ? ` (enum: ${val.enum.join(', ')})` : ''}`)
-      .join('\n');
-    return `## ${fn.name}\n${fn.description}\nParameters:\n${paramDesc}`;
-  }).join('\n\n');
+  return TOOL_DEFINITIONS
+    .map((def) => {
+      const fn = def.function;
+      const params = fn.parameters.properties as Record<string, { description?: string; enum?: string[] }>;
+      const paramDesc = Object.entries(params)
+        .map(([key, val]) => `  - ${key}: ${val.description ?? ''}${val.enum ? ` (enum: ${val.enum.join(', ')})` : ''}`)
+        .join('\n');
+      return `## ${fn.name}\n${fn.description}\nParameters:\n${paramDesc}`;
+    })
+    .join('\n\n');
+}
+
+export interface ValidatedToolCall {
+  name: string;
+  args: Record<string, unknown>;
+}
+
+export function validateToolCalls(toolCalls: ToolCall[]): {
+  valid: ValidatedToolCall[];
+  invalid: { call: ToolCall; errors: string[] }[];
+} {
+  const valid: ValidatedToolCall[] = [];
+  const invalid: { call: ToolCall; errors: string[] }[] = [];
+
+  for (const call of toolCalls) {
+    const known = TOOL_DEFINITIONS.some((d) => d.function.name === call.function.name);
+    if (!known) {
+      invalid.push({ call, errors: [`Unknown tool: "${call.function.name}"`] });
+      continue;
+    }
+    try {
+      const args = JSON.parse(call.function.arguments) as Record<string, unknown>;
+      valid.push({ name: call.function.name, args });
+    } catch {
+      invalid.push({ call, errors: ['Invalid JSON in tool call arguments'] });
+    }
+  }
+
+  return { valid, invalid };
 }

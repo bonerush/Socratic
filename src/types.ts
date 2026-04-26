@@ -1,5 +1,5 @@
 export const PLUGIN_ID = 'socratic-note-tutor';
-export const PLUGIN_NAME = 'Socratic Note Tutor';
+const PLUGIN_NAME = 'Socratic Note Tutor';
 export const VIEW_TYPE_SOCRATIC = `${PLUGIN_ID}:socratic-view`;
 export const SESSION_DIR = '.socratic-sessions';
 
@@ -77,6 +77,38 @@ export interface LearnerProfile {
   selfCalibrationHistory: { actual: number; selfAssessed: SelfAssessmentLevel; timestamp: number }[];
   sessionCount: number;
   lastUpdated: number;
+
+  /** Extracted memories from past sessions. */
+  memories: MemoryCollection;
+  /** Concepts the student has shown strength in. */
+  preferredConcepts: string[];
+  /** Concepts the student has struggled with. */
+  strugglingConcepts: string[];
+}
+
+// ── Memory System ───────────────────────────────────────────
+
+export type MemoryType = 'user' | 'feedback' | 'project' | 'reference';
+
+export interface Memory {
+  id: string;
+  type: MemoryType;
+  name: string;
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+  source?: string;
+}
+
+export interface MemoryCollection {
+  user: Memory[];
+  feedback: Memory[];
+  project: Memory[];
+  reference: Memory[];
+}
+
+export function emptyMemoryCollection(): MemoryCollection {
+  return { user: [], feedback: [], project: [], reference: [] };
 }
 
 export interface SocraticPluginSettings {
@@ -89,16 +121,21 @@ export interface SocraticPluginSettings {
   masteryThreshold: number;
   reviewIntervalBase: number;
   reviewIntervalMax: number;
+  disableToolCalling: boolean;
+  /** Path to memory files (defaults to sessionStoragePath/.memories). */
+  memoryStoragePath: string;
 }
 
 export const DEFAULT_SETTINGS: SocraticPluginSettings = {
   apiEndpoint: 'https://api.openai.com/v1/chat/completions',
   apiKey: '',
   model: 'gpt-4',
-  language: 'auto',
+  language: 'zh',
   sessionStoragePath: '',
   maxConceptsPerSession: 15,
   masteryThreshold: 80,
   reviewIntervalBase: 86400,
   reviewIntervalMax: 2764800,
+  disableToolCalling: false,
+  memoryStoragePath: '',
 };
