@@ -217,25 +217,52 @@ export class SocraticEngine {
 
       const parsed = this.parseStructuredResponse(response);
 
-      if (parsed.concepts && Array.isArray(parsed.concepts)) {
+      if (parsed.concepts && Array.isArray(parsed.concepts) && parsed.concepts.length > 0) {
         return { concepts: parsed.concepts };
       }
 
-      try {
-        const jsonMatch = response.content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const directParsed = JSON.parse(jsonMatch[0]) as ConceptExtractionResponse;
-          if (directParsed.concepts && Array.isArray(directParsed.concepts)) {
-            return { concepts: directParsed.concepts };
-          }
-        }
-      } catch {
-        // Fall through
+      // Lenient fallback: try to parse JSON from content, including markdown code blocks
+      const rawContent = response.content || '';
+      const extracted = this.tryExtractConceptsFromText(rawContent);
+      if (extracted.length > 0) {
+        return { concepts: extracted };
       }
-      throw new Error('Failed to extract concepts from the note content.');
+
+      throw new Error(
+        `Failed to extract concepts from the note content. ` +
+        `Raw response: ${rawContent.slice(0, 500)}`,
+      );
     } finally {
       this.setPhase(null);
     }
+  }
+
+  private tryExtractConceptsFromText(text: string): ExtractedConcept[] {
+    // Try markdown code block first
+    const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    const jsonText = codeBlockMatch ? codeBlockMatch[1]! : text;
+
+    // Find the outermost JSON object using non-greedy matching
+    const jsonMatch = jsonText.match(/\{[\s\S]*?\}/);
+    if (!jsonMatch) return [];
+
+    try {
+      const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+      const concepts = parsed.concepts ?? parsed.data ?? parsed.result;
+      if (Array.isArray(concepts) && concepts.length > 0) {
+        return concepts.map((c) => ({
+          id: String((c as Record<string, unknown>).id ?? ''),
+          name: String((c as Record<string, unknown>).name ?? ''),
+          description: String((c as Record<string, unknown>).description ?? ''),
+          dependencies: Array.isArray((c as Record<string, unknown>).dependencies)
+            ? (c as Record<string, unknown>).dependencies as string[]
+            : [],
+        })).filter((c) => c.id && c.name);
+      }
+    } catch {
+      // Ignore parse errors
+    }
+    return [];
   }
 
   async stepAskQuestion(session: SessionState): Promise<TutorMessage> {
@@ -412,7 +439,11 @@ export class SocraticEngine {
 
     // Path 2: JSON fallback in content
     try {
-      const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+      const raw = response.content || '';
+      // Prefer markdown code blocks, then fall back to first JSON object
+      const codeBlock = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+      const jsonText = codeBlock ? codeBlock[1]! : raw;
+      const jsonMatch = jsonText.match(/\{[\s\S]*?\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]) as LLMStructuredResponse;
         if (parsed.content || parsed.concepts) return parsed;

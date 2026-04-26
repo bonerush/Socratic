@@ -198,7 +198,7 @@ export class PromptBuilder {
 3. 简要描述
 4. 依赖关系（应该先学习哪些概念）
 
-使用 \`extract_concepts\` 工具返回提取的概念。如果函数调用不可用，请以 JSON 格式回复：
+使用 \`extract_concepts\` 工具返回提取的概念。如果函数调用不可用，你必须只返回一段 JSON（不要添加任何解释文字，不要 Markdown 代码块外的文字），格式如下：
 {
   "tool": "extract_concepts",
   "concepts": [
