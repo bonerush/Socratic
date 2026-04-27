@@ -130,7 +130,7 @@ export class SocraticEngine {
     return recentMsgs.some(m =>
       m.role === 'tutor'
       && m.type === 'feedback'
-      && m.content.startsWith('Mastery:')
+      && (m.content.startsWith('Mastery:') || m.content.startsWith('掌握度：'))
     );
   }
 
@@ -240,9 +240,10 @@ export class SocraticEngine {
     this.tracer?.engineStep(this.sessionSlug, 'stepDiagnosis', { round });
     return this.withPhase('diagnosis', async () => {
       const systemPrompt = this.buildContextAwareSystemPrompt(session);
-      const diagnosisPrompt = round === 1
+      const basePrompt = round === 1
         ? this.promptBuilder.buildDiagnosisPrompt()
         : '根据学生上一个回答，追问一个诊断性问题，更好地了解他们的知识水平。关注他们理解不清的地方。';
+      const diagnosisPrompt = `${basePrompt}\n\nCRITICAL: 你必须调用 provide_guidance 工具返回你的回应。不要输出纯文本——纯文本会被系统忽略。`;
       const messages = this.buildConversationContext(session);
 
       const parsed = await this.chatWithEmptyContentHealing(systemPrompt, [
@@ -264,6 +265,23 @@ export class SocraticEngine {
           type: 'open-ended',
           prompt: tutorMsg.content,
         };
+      }
+
+      // Guard: if the LLM described a scenario but didn't actually ask a question
+      // (no question mark in content), append a direct question so the user knows
+      // what to answer.
+      const hasQuestionMark = /[?？]/.test(tutorMsg.content);
+      if (!hasQuestionMark && tutorMsg.type !== 'info') {
+        tutorMsg.content += '\n\n你对这个主题已经有哪些了解？请简单描述一下。';
+        if (!tutorMsg.question) {
+          tutorMsg.question = {
+            id: generateId(),
+            conceptId: '',
+            type: 'open-ended',
+            prompt: tutorMsg.content,
+          };
+          tutorMsg.type = 'question';
+        }
       }
 
       this.ensureContent(tutorMsg);
@@ -350,8 +368,8 @@ Requirements:
       const systemPrompt = this.buildContextAwareSystemPrompt(session);
       const currentConcept = session.concepts.find(c => c.id === session.currentConceptId);
       const prompt = currentConcept
-        ? `你正在教学概念 "${currentConcept.name}"（概念ID: ${currentConcept.id}）。基于对话历史，提出下一个合适的教学消息来引导学生学习。记住：永远不要直接给出答案，只能用问题和提示引导。\n\n你必须使用 provide_guidance 工具返回你的教学消息。消息应该包含：如果需要的话简要纠正误解，给出提示或解释，最后以一个引导性问题结束。\n\n重要：请在 conceptId 字段中填写当前概念ID "${currentConcept.id}"，以便系统正确追踪学习进度。`
-        : 'Continue the tutoring session with appropriate Socratic guidance based on the conversation so far.\n\nYou MUST use the provide_guidance tool. Your message should include: a brief correction if needed, hints or explanations, and end with a guiding question.';
+        ? `你正在教学概念 "${currentConcept.name}"（概念ID: ${currentConcept.id}）。基于对话历史，提出下一个合适的教学消息来引导学生学习。记住：永远不要直接给出答案，只能用问题和提示引导。\n\nCRITICAL: 你必须调用 provide_guidance 工具。不要输出纯文本——纯文本会被系统忽略。\n\n重要：请在 conceptId 字段中填写当前概念ID "${currentConcept.id}"，以便系统正确追踪学习进度。如果是选择题，必须同时提供 options 数组和 correctOptionIndex。`
+        : 'Continue the tutoring session with appropriate Socratic guidance based on the conversation so far.\n\nCRITICAL: You MUST call the provide_guidance tool. Do NOT output plain text — plain text will be ignored by the system.';
 
       const messages = this.buildConversationContext(session);
       const parsed = await this.chatWithEmptyContentHealing(systemPrompt, [
@@ -413,7 +431,9 @@ Requirements:
 2. 找出并修复一个关于此概念的声明中的故意错误
 3. 用他们自己领域的例子来解释这个概念
 
-要求具体且贴合此概念。`;
+要求具体且贴合此概念。
+
+CRITICAL: 你必须调用 provide_guidance 工具。不要输出纯文本——纯文本会被系统忽略。`;
       const messages = this.buildConversationContext(session);
       const parsed = await this.chatWithEmptyContentHealing(systemPrompt, [
         ...messages,
@@ -463,7 +483,10 @@ Requirements:
       dimensions.conceptDiscrimination,
     ].filter(Boolean).length / 4 * 100;
 
-    concept.masteryScore = Math.round((concept.masteryScore + dimensionScore) / 2);
+    // Weight the new evaluation more heavily so strong performances reach
+    // the mastery threshold faster. A perfect 100% on the first check
+    // yields 85%, enough to pass the default 80% threshold.
+    concept.masteryScore = Math.round(concept.masteryScore * 0.15 + dimensionScore * 0.85);
     concept.lastReviewTime = Date.now();
     concept.selfAssessment = selfAssessment;
 
@@ -541,7 +564,7 @@ Requirements:
     const mutableMessages = [...messages];
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      const response = await this.withRetry(() =>
+      const response = await withRetry(() =>
         this.llm.chat(systemPrompt, mutableMessages, temperature, maxTokens, tools, jsonMode)
       );
       const content = response.content?.trim() || '';
@@ -575,24 +598,9 @@ Requirements:
     }
 
     // Return last response even if malformed — caller will use parse fallback
-    return await this.withRetry(() =>
+    return await withRetry(() =>
       this.llm.chat(systemPrompt, mutableMessages, temperature, maxTokens, tools, jsonMode)
     );
-  }
-
-  private async withRetry<T>(fn: () => Promise<T>): Promise<T> {
-    let lastError: Error | null = null;
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        return await fn();
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        if (attempt < MAX_RETRIES) {
-          await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
-        }
-      }
-    }
-    throw lastError || new Error('Operation failed after retries');
   }
 
   /**
@@ -620,17 +628,22 @@ Requirements:
       const isExtractEmpty = parsed.tool === 'extract_concepts' && (!parsed.concepts || parsed.concepts.length === 0);
       const isContentEmpty = parsed.tool !== 'extract_concepts' && !parsed.content?.trim();
       const isLeakage = this.containsSystemPromptLeakage(parsed.content || '');
+      const looksLikeQuestion = /[?？]/.test(parsed.content || '');
+      const impliesMultipleChoice = /以下哪个|哪一个|请选择|选项|方案|选择/i.test(parsed.content || '');
+      const isMissingOptions = looksLikeQuestion && impliesMultipleChoice && !parsed.options && parsed.questionType !== 'open-ended';
 
-      if (!isExtractEmpty && !isContentEmpty && !isLeakage) {
+      if (!isExtractEmpty && !isContentEmpty && !isLeakage && !isMissingOptions) {
         return parsed;
       }
 
       let correction = '';
-      const reason = isLeakage ? 'system-prompt-leakage' : isContentEmpty ? 'empty-content' : 'empty-concepts';
+      const reason = isLeakage ? 'system-prompt-leakage' : isContentEmpty ? 'empty-content' : isMissingOptions ? 'missing-options' : 'empty-concepts';
       if (isLeakage) {
         correction = '你的回复包含了系统提示中的指令或示例文字。请只输出你自己的教学内容，不要重复系统提示中的任何规则、格式说明或示例。';
       } else if (isContentEmpty) {
         correction = '你的 content 字段为空。请重新生成完整、有意义的回复，确保 content 包含实际的问题或指导文本。';
+      } else if (isMissingOptions) {
+        correction = '你的消息中提到了"选择"或"哪个"，暗示这是一个选择题，但没有提供 options 数组。请重新调用 provide_guidance 工具，如果是选择题必须提供 options 数组（2-5个选项）和 correctOptionIndex；如果是开放性问题，请将 questionType 设为 "open-ended" 并去掉暗示选择的措辞。';
       } else if (isExtractEmpty) {
         correction = '你没有返回任何概念。请从笔记内容中提取 5-15 个原子概念，并填充 concepts 数组。';
       }
@@ -806,20 +819,41 @@ Requirements:
 
   private buildTutorMessageFromParsed(parsed: LLMStructuredResponse): TutorMessage {
     this.tracer?.parsedResult(this.sessionSlug, { ...parsed, _source: 'buildTutorMessage' });
-    const questionType = parsed.questionType || null;
+    let questionType = parsed.questionType || null;
     const content = parsed.content || '';
+    let options = parsed.options;
+    let correctOptionIndex = parsed.correctOptionIndex ?? undefined;
+
+    // Fallback: if the LLM wrote A/B/C/D options in the text but forgot to
+    // populate the structured fields, extract them automatically.
+    if (!options || options.length === 0) {
+      const extracted = this.extractOptionsFromContent(content);
+      if (extracted) {
+        options = extracted.options;
+        correctOptionIndex = extracted.correctOptionIndex ?? correctOptionIndex;
+        questionType = 'multiple-choice';
+      }
+    }
+
+    // Guard: if the LLM returned plain text that looks like a question but
+    // didn't call a tool or set questionType, treat it as an open-ended
+    // question so the UI shows it as something the student can answer.
+    if (!questionType && /[?？]/.test(content)) {
+      questionType = 'open-ended';
+    }
+
     const question: Question | undefined = questionType
       ? {
           id: generateId(),
           conceptId: parsed.conceptId || '',
           type: questionType,
           prompt: content,
-          options: parsed.options || undefined,
-          correctOptionIndex: parsed.correctOptionIndex ?? undefined,
+          options: options || undefined,
+          correctOptionIndex: correctOptionIndex ?? undefined,
         }
       : undefined;
 
-    const type = this.inferMessageType(parsed);
+    const type = this.inferMessageType({ ...parsed, questionType });
 
     return {
       id: generateId(),
@@ -829,6 +863,43 @@ Requirements:
       question,
       timestamp: Date.now(),
     };
+  }
+
+  /**
+   * Extract multiple-choice options from message content when the LLM
+   * writes them inline (e.g. "A. xxx\nB. xxx") but omits the structured
+   * `options` array in the tool call.
+   *
+   * Supports formats like:
+   *   A. xxx
+   *   B、xxx
+   *   C) xxx
+   *   D xxx
+   */
+  private extractOptionsFromContent(content: string): { options: string[]; correctOptionIndex?: number } | null {
+    const lines = content.split('\n');
+    const options: string[] = [];
+    const optionRegex = /^\s*([A-Da-d])[\.、。:：,，!！?？）\)\]\}\-\s]+\s*(.+)$/;
+    const simpleRegex = /^\s*([A-Da-d])\s+(.+)$/;
+
+    for (const line of lines) {
+      const match = optionRegex.exec(line) || simpleRegex.exec(line);
+      if (match && match[1] && match[2]) {
+        const label = match[1].toUpperCase();
+        const text = match[2].trim();
+        const index = label.charCodeAt(0) - 65;
+        if (index >= 0 && index < 4) {
+          // Ensure array has enough slots
+          while (options.length <= index) options.push('');
+          options[index] = text;
+        }
+      }
+    }
+
+    if (options.length >= 2 && options.every(o => o.trim().length > 0)) {
+      return { options };
+    }
+    return null;
   }
 
   private inferMessageType(parsed: LLMStructuredResponse): TutorMessage['type'] {

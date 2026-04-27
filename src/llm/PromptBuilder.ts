@@ -65,7 +65,7 @@ function buildToolsBlock(phase: string): PromptBlock {
     id: 'tools',
     priority: P_TOOLS,
     content: `## Available Tools
-You may call the following tools to interact with the student:
+You MUST call one of the following tools for EVERY response. Do NOT output plain text — plain text will be ignored by the system.
 
 ${getToolDescriptions(phase).split('\n').map(line => `\t${line}`).join('\n')}`,
   };
@@ -75,38 +75,49 @@ const RESPONSE_FORMAT_BLOCK: PromptBlock = {
   id: 'response-format',
   priority: P_RESPONSE_FORMAT,
   content: `## Response Format
-You MUST output a single valid JSON object. No markdown code blocks, no preamble, no explanation — just raw JSON.
+CRITICAL: You MUST call one of the Available Tools for EVERY response. Do NOT output plain text — plain text responses will be IGNORED by the system and the conversation will stall.
 
-JSON Schema:
+Tool Calling Rules:
+1. ALWAYS call the appropriate tool from the Available Tools list.
+2. Fill ALL relevant parameters for the tool you call.
+3. For provide_guidance with multiple-choice: populate "options" (2-5 items, text only without "A." prefixes) AND "correctOptionIndex".
+4. For provide_guidance with open-ended: set "questionType" to "open-ended", omit "options".
+5. For assess_mastery: populate ALL 4 boolean dimensions (correctness, explanationDepth, novelApplication, conceptDiscrimination).
+6. NEVER output text outside a tool call. NEVER use markdown code blocks.
+
+If the API does not support tool calling, fall back to outputting a single valid JSON object matching the tool parameter schema.
+
+## Tool Calling Examples
+
+CORRECT — provide_guidance (open-ended):
 {
-  "tool": "provide_guidance" | "assess_mastery" | "extract_concepts" | "send_info",
-  "content": "string — required. Your teaching message or question text.",
-  "questionType": "multiple-choice" | "open-ended" | null,
-  "options": ["string"] | null,
-  "correctOptionIndex": number | null,
-  "conceptId": "string | null",
-  "masteryCheck": {
-    "correctness": boolean,
-    "explanationDepth": boolean,
-    "novelApplication": boolean,
-    "conceptDiscrimination": boolean
-  } | null,
-  "misconceptionDetected": {
-    "misconception": "string",
-    "rootCause": "string"
-  } | null,
-  "concepts": [
-    { "id": "slug", "name": "string", "description": "string", "dependencies": ["slug"] }
-  ] | null
+  "content": "在你看来，当USB鼠标插入树莓派时，用户空间是怎么知道有新设备的？",
+  "questionType": "open-ended",
+  "conceptId": "uevent-baseline"
 }
 
-Rules:
-1. ALWAYS include the \\"tool\\" field.
-2. ALWAYS include the \\"content\\" field (can be empty string but never omit).
-3. For \\"extract_concepts\\", populate \\"concepts\\" array.
-4. For \\"provide_guidance\\", populate \\"questionType\\" and \\"options\\" when including a multiple-choice question.
-5. For \\"assess_mastery\\", populate \\"masteryCheck\\".
-6. NEVER output text outside the JSON object. NEVER use markdown code blocks.`,
+CORRECT — provide_guidance (multiple-choice):
+{
+  "content": "以下哪个说法最能体现内核空间与用户空间隔离的核心思想？",
+  "questionType": "multiple-choice",
+  "options": ["使用netlink更快", "用户程序崩溃不会导致系统崩溃", "udev用C编写", "uevent可手动读写"],
+  "correctOptionIndex": 1,
+  "conceptId": "kernel-vs-userspace"
+}
+
+CORRECT — assess_mastery:
+{
+  "content": "学生正确理解了uevent的触发时机和消息格式...",
+  "correctness": true,
+  "explanationDepth": true,
+  "novelApplication": true,
+  "conceptDiscrimination": true,
+  "conceptId": "uevent-definition"
+}
+
+INCORRECT — DO NOT do this (plain text without tool call):
+"在开始学习之前，我想先了解一下你目前对这个主题的认知..."
+→ This will be IGNORED. Always use a tool.`,
 };
 
 // ── Dynamic block builders ──────────────────────────────────
@@ -204,7 +215,7 @@ export class PromptBuilder {
   }
 
   buildDiagnosisPrompt(): string {
-    return '请先诊断学生的当前理解程度。一次只问一个问题（选择题或开放题）来评估他们对这个主题的已有知识。现在还不要教学——只做诊断。';
+    return '请先诊断学生的当前理解程度。提出一个明确的问题（选择题或开放题）来评估他们对这个主题的已有知识。问题本身必须包含一个明确的问句（使用问号），让学生清楚知道需要回答什么。现在还不要教学——只做诊断。';
   }
 
   buildConceptExtractionPrompt(): string {
@@ -232,7 +243,7 @@ export class PromptBuilder {
 3. 新颖应用（能处理未见过的场景）
 4. 概念区分（能区分相似概念）
 
-在响应的 masteryCheck 字段中为每个维度打分。`;
+CRITICAL: 你必须调用 assess_mastery 工具。不要输出纯文本——纯文本会被系统忽略。在工具的 masteryCheck 字段中为每个维度打分（true/false）。`;
   }
 
   buildExplainSelectionPrompt(selection: string): string {

@@ -598,10 +598,12 @@ export default class SocraticNoteTutorPlugin extends Plugin {
 
       const rounds = this.countRoundsForConcept(currentConcept.id);
       if (rounds >= 3) {
-        const recentMsgs = this.session.messages.slice(-5);
-        const justChecked = recentMsgs.some(m =>
-          m.role === 'tutor' && m.type === 'feedback' && m.content.startsWith('Mastery:')
-        );
+        // Only skip mastery check if the *most recent* tutor message is the
+        // mastery feedback itself. If the last tutor message is a question,
+        // the student has since answered it and we need to reassess.
+        const lastTutorMsg = [...this.session.messages].reverse().find(m => m.role === 'tutor');
+        const justChecked = lastTutorMsg?.type === 'feedback' &&
+          (lastTutorMsg.content.startsWith('Mastery:') || lastTutorMsg.content.startsWith('掌握度：'));
         if (!justChecked) {
           await this.runMasteryCheck(currentConcept.id);
           return;
@@ -620,9 +622,11 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       this.session.messages.push(msg);
       view.addMessage(msg);
 
-      // If the LLM returned guidance/feedback instead of a question, automatically
-      // continue so the conversation never stalls waiting for the user.
-      if (msg.type !== 'question' && !msg.question && recursionDepth < 5) {
+      // Only auto-continue if the message is effectively empty (placeholder or no content).
+      // If the LLM produced substantive text (even without a proper tool call), show it
+      // to the user instead of firing another LLM request immediately.
+      const isEmpty = (!msg.content?.trim() || msg.content.trim() === '...') && !msg.question;
+      if (isEmpty && recursionDepth < 5) {
         await this.continueTutoring(recursionDepth + 1);
         return;
       }
@@ -669,7 +673,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
           id: generateId(),
           role: 'tutor',
           type: 'feedback',
-          content: `Mastery: ${newScore}%`,
+          content: `掌握度：${newScore}%（基于正确性、解释深度、新颖应用、概念区分四个维度的评估，达到 80% 即可掌握该概念）。`,
           timestamp: Date.now(),
         };
         this.session!.messages.push(feedbackMsg);
@@ -678,6 +682,10 @@ export default class SocraticNoteTutorPlugin extends Plugin {
 
       view.updateProgress(this.session!);
       await this.sessionManager.saveSession(this.session!.noteSlug, this.session!);
+
+      // Continue the conversation so the tutor either asks another question
+      // for the current concept or moves on to the next one.
+      await this.continueTutoring();
     }, this.t.masteryCheckFailed);
   }
 

@@ -38,25 +38,25 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'provide_guidance',
       description:
-        'Provide teaching guidance to the student. Your message should: (a) briefly correct any misconceptions if needed, (b) give hints or explanations to guide thinking, (c) end with a Socratic question. Never give the answer directly. For multiple-choice questions, provide 2-5 options and the correct index. For open-ended questions, leave options empty.',
+        'REQUIRED: Use this tool for EVERY teaching interaction. Your message should: (a) briefly correct any misconceptions if needed, (b) give hints or explanations to guide thinking, (c) end with a Socratic question. Never give the answer directly. CRITICAL: For multiple-choice questions, you MUST populate the "options" array (2-5 items) AND "correctOptionIndex". For open-ended questions, set "questionType" to "open-ended" and omit "options".',
       parameters: {
         type: 'object',
         properties: {
-          content: { type: 'string', description: 'The guidance text or question text.' },
+          content: { type: 'string', description: 'The guidance text or question text. Must be substantive and include the actual question.' },
           conceptId: { type: 'string', description: 'ID of the concept this guidance targets.' },
           questionType: {
             type: 'string',
             enum: ['multiple-choice', 'open-ended'],
-            description: 'Type of question included in the guidance.',
+            description: 'REQUIRED when including a question. Set to "multiple-choice" or "open-ended".',
           },
           options: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Options for multiple-choice questions.',
+            description: 'REQUIRED for multiple-choice: 2-5 option strings. Each option should be the text only, without "A.", "B." prefixes.',
           },
           correctOptionIndex: {
             type: 'number',
-            description: 'Zero-based index of the correct option.',
+            description: 'REQUIRED for multiple-choice: zero-based index of the correct option (0, 1, 2, or 3).',
           },
           misconception: {
             type: 'string',
@@ -76,7 +76,7 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'assess_mastery',
       description:
-        "Assess the student's mastery of a concept across four dimensions: correctness, explanation depth, novel application, and concept discrimination.",
+        'REQUIRED: Use this tool when evaluating student mastery. Assess across all four dimensions and return a structured evaluation.',
       parameters: {
         type: 'object',
         properties: {
@@ -108,23 +108,23 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'extract_concepts',
       description:
-        'Extract atomic concepts from the note content that the student needs to master. Return 5-15 concepts ordered from foundational to advanced.',
+        'REQUIRED: Use this tool to extract atomic concepts from the note content. Return 5-15 concepts ordered from foundational to advanced.',
       parameters: {
         type: 'object',
         properties: {
           concepts: {
             type: 'array',
-            description: 'List of extracted concepts.',
+            description: 'List of extracted concepts. MUST contain at least 5 items.',
             items: {
               type: 'object',
               properties: {
-                id: { type: 'string', description: 'Unique slug-style ID.' },
+                id: { type: 'string', description: 'Unique slug-style ID (e.g. "kernel-space").' },
                 name: { type: 'string', description: 'Human-readable concept name.' },
-                description: { type: 'string', description: 'Brief description.' },
+                description: { type: 'string', description: 'Brief description of what the student needs to understand.' },
                 dependencies: {
                   type: 'array',
                   items: { type: 'string' },
-                  description: 'IDs of prerequisite concepts.',
+                  description: 'IDs of prerequisite concepts that should be learned first.',
                 },
               },
               required: ['id', 'name', 'description', 'dependencies'],
@@ -140,7 +140,7 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
     function: {
       name: 'send_info',
       description:
-        'Send an informational message to the student (e.g. session transition, concept mastered notification). Use sparingly.',
+        'Use this tool ONLY for session transitions, completion notifications, or when no teaching question is needed. For all teaching interactions, use provide_guidance instead.',
       parameters: {
         type: 'object',
         properties: {
