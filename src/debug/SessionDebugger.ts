@@ -76,6 +76,69 @@ export class SessionDebugger {
       issues.push('Session marked completed but has minimal content');
     }
 
+    // 1. Message sequence check: no two consecutive tutor questions without a user message between
+    const nonSystemMessages = state.messages.filter((m) => m.type !== 'system');
+    for (let i = 1; i < nonSystemMessages.length; i++) {
+      const prev = nonSystemMessages[i - 1]!;
+      const curr = nonSystemMessages[i]!;
+      if (prev.role === 'tutor' && curr.role === 'tutor') {
+        // Allow initial diagnosis (first tutor message)
+        const prevIndex = state.messages.findIndex((m) => m.id === prev.id);
+        if (prevIndex > 0) {
+          issues.push(`Consecutive tutor messages without user response: ${prev.id} -> ${curr.id}`);
+        }
+      }
+    }
+
+    // 2. Mastery check completeness
+    for (let i = 0; i < state.messages.length; i++) {
+      const msg = state.messages[i]!;
+      if (
+        msg.role === 'tutor' &&
+        msg.type === 'feedback' &&
+        (msg.content.startsWith('Mastery:') || msg.content.startsWith('掌握度：'))
+      ) {
+        const subsequentMessages = state.messages.slice(i + 1);
+        const statusChange = subsequentMessages.find(
+          (m) =>
+            m.role === 'tutor' &&
+            m.type === 'feedback' &&
+            (m.content.includes('mastered') || m.content.includes('learning') || m.content.includes('已掌握') || m.content.includes('学习中'))
+        );
+        if (!statusChange) {
+          issues.push(`Mastery check message ${msg.id} is not followed by a concept status change to mastered/learning`);
+        }
+      }
+    }
+
+    // 3. Concept dependency cycle detection
+    const dependencyCycles = this.findDependencyCycles(state.concepts);
+    for (const cycle of dependencyCycles) {
+      issues.push(`Concept dependency cycle detected: ${cycle.join(' -> ')}`);
+    }
+
+    // 4. Orphaned user messages: user messages without a preceding tutor question
+    for (let i = 0; i < state.messages.length; i++) {
+      const msg = state.messages[i]!;
+      if (msg.role === 'user') {
+        const precedingTutor = state.messages
+          .slice(0, i)
+          .reverse()
+          .find((m) => m.role === 'tutor' && m.type === 'question');
+        if (!precedingTutor) {
+          issues.push(`Orphaned user message ${msg.id}: no preceding tutor question`);
+        }
+      }
+    }
+
+    // 5. Empty content check
+    const emptyTutorMessages = state.messages.filter(
+      (m) => m.role === 'tutor' && (!m.content.trim() || m.content.trim() === '...')
+    );
+    if (emptyTutorMessages.length > 0) {
+      issues.push(`Empty or placeholder tutor messages: ${emptyTutorMessages.length} (ids: ${emptyTutorMessages.map((m) => m.id).join(', ')})`);
+    }
+
     const stats = this.computeStats(state);
 
     return {
@@ -83,6 +146,47 @@ export class SessionDebugger {
       issues,
       stats,
     };
+  }
+
+  private findDependencyCycles(concepts: ConceptState[]): string[][] {
+    const cycles: string[][] = [];
+    const visited = new Set<string>();
+    const recursionStack = new Set<string>();
+
+    const adjacency = new Map<string, string[]>();
+    for (const c of concepts) {
+      adjacency.set(c.id, c.dependencies);
+    }
+
+    const dfs = (node: string, path: string[]): void => {
+      visited.add(node);
+      recursionStack.add(node);
+      path.push(node);
+
+      const neighbors = adjacency.get(node) ?? [];
+      for (const neighbor of neighbors) {
+        if (!adjacency.has(neighbor)) continue;
+        if (!visited.has(neighbor)) {
+          dfs(neighbor, path);
+        } else if (recursionStack.has(neighbor)) {
+          const cycleStart = path.indexOf(neighbor);
+          const cycle = path.slice(cycleStart);
+          cycle.push(neighbor);
+          cycles.push(cycle);
+        }
+      }
+
+      path.pop();
+      recursionStack.delete(node);
+    };
+
+    for (const c of concepts) {
+      if (!visited.has(c.id)) {
+        dfs(c.id, []);
+      }
+    }
+
+    return cycles;
   }
 
   computeStats(state: SessionState): SessionStats {

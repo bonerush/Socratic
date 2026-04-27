@@ -10,6 +10,12 @@ export interface TraceAnalysis {
   healingAttemptCount: number;
   phases: { phase: string; durationMs: number }[];
   errors: { timestamp: number; message: string }[];
+  avgLlmResponseTimeMs: number;
+  errorRate: number;
+  selfCorrectionRate: number;
+  healingRate: number;
+  mostExpensivePhase: { phase: string; durationMs: number } | null;
+  tokenEfficiency: number;
 }
 
 /**
@@ -53,16 +59,65 @@ export class TraceAnalyzer {
         message: String(e.data.message ?? 'Unknown error'),
       }));
 
+    const selfCorrectionCount = events.filter((e) => e.type === 'self-correction').length;
+    const healingAttemptCount = events.filter((e) => e.type === 'healing-attempt').length;
+    const llmCallCount = llmCalls.length;
+
+    // 1. Average LLM response time
+    let totalResponseTime = 0;
+    let responseTimeCount = 0;
+    for (let i = 0; i < events.length; i++) {
+      const req = events[i];
+      if (req && req.type === 'llm-request') {
+        const responseEvent = events.slice(i + 1).find((e) => e.type === 'llm-response');
+        if (responseEvent) {
+          totalResponseTime += responseEvent.timestamp - req.timestamp;
+          responseTimeCount++;
+        }
+      }
+    }
+    const avgLlmResponseTimeMs = responseTimeCount > 0 ? Math.round(totalResponseTime / responseTimeCount) : 0;
+
+    // 2. Error rate
+    const errorRate = llmCallCount > 0 ? errors.length / llmCallCount : 0;
+
+    // 3. Self-correction rate
+    const selfCorrectionRate = llmCallCount > 0 ? selfCorrectionCount / llmCallCount : 0;
+
+    // 4. Healing rate
+    const healingRate = llmCallCount > 0 ? healingAttemptCount / llmCallCount : 0;
+
+    // 5. Most expensive phase
+    const phaseTotals = new Map<string, number>();
+    for (const p of phases) {
+      phaseTotals.set(p.phase, (phaseTotals.get(p.phase) ?? 0) + p.durationMs);
+    }
+    let mostExpensivePhase: { phase: string; durationMs: number } | null = null;
+    for (const [phase, durationMs] of phaseTotals) {
+      if (!mostExpensivePhase || durationMs > mostExpensivePhase.durationMs) {
+        mostExpensivePhase = { phase, durationMs };
+      }
+    }
+
+    // 6. Token efficiency
+    const tokenEfficiency = llmCallCount > 0 ? totalCompletionTokens / llmCallCount : 0;
+
     return {
       sessionSlug,
       eventCount: events.length,
-      llmCallCount: llmCalls.length,
+      llmCallCount,
       totalPromptTokens,
       totalCompletionTokens,
-      selfCorrectionCount: events.filter((e) => e.type === 'self-correction').length,
-      healingAttemptCount: events.filter((e) => e.type === 'healing-attempt').length,
+      selfCorrectionCount,
+      healingAttemptCount,
       phases,
       errors,
+      avgLlmResponseTimeMs,
+      errorRate,
+      selfCorrectionRate,
+      healingRate,
+      mostExpensivePhase,
+      tokenEfficiency,
     };
   }
 
@@ -76,11 +131,25 @@ export class TraceAnalyzer {
     lines.push(`- Healing attempts: ${analysis.healingAttemptCount}`);
     lines.push('');
 
+    lines.push('## Performance');
+    lines.push(`- Average LLM response time: ${analysis.avgLlmResponseTimeMs}ms`);
+    if (analysis.mostExpensivePhase) {
+      lines.push(`- Most expensive phase: ${analysis.mostExpensivePhase.phase} (${analysis.mostExpensivePhase.durationMs}ms)`);
+    }
+    lines.push('');
+
+    lines.push('## Rates');
+    lines.push(`- Error rate: ${(analysis.errorRate * 100).toFixed(1)}%`);
+    lines.push(`- Self-correction rate: ${(analysis.selfCorrectionRate * 100).toFixed(1)}%`);
+    lines.push(`- Healing rate: ${(analysis.healingRate * 100).toFixed(1)}%`);
+    lines.push('');
+
     if (analysis.totalPromptTokens > 0 || analysis.totalCompletionTokens > 0) {
       lines.push('## Token Usage');
       lines.push(`- Prompt tokens: ${analysis.totalPromptTokens}`);
       lines.push(`- Completion tokens: ${analysis.totalCompletionTokens}`);
       lines.push(`- Total: ${analysis.totalPromptTokens + analysis.totalCompletionTokens}`);
+      lines.push(`- Token efficiency (completion/call): ${analysis.tokenEfficiency.toFixed(1)}`);
       lines.push('');
     }
 
