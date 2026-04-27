@@ -1,15 +1,5 @@
 import type { SessionState } from './types';
-
-function escapeHtml(text: string): string {
-  const map: Record<string, string> = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#x27;',
-  };
-  return text.replace(/[&<>"']/g, c => map[c] || c);
-}
+import { escapeHtml } from './utils/html';
 
 function statusLabel(status: string): string {
   return status === 'mastered' ? '✓ Mastered'

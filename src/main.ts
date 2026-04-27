@@ -11,6 +11,7 @@ import {
   type SessionSummary,
 } from './types';
 import { generateId, slugify } from './utils/helpers';
+import { getErrorMessage } from './utils/error';
 import { getTranslations, resolveLang, type Lang } from './i18n/translations';
 import { generateRoadmapHtml, generateSummaryHtml } from './templates';
 import { Tracer } from './debug/Tracer';
@@ -268,25 +269,11 @@ export default class SocraticNoteTutorPlugin extends Plugin {
   }
 
   async startTutoring(): Promise<void> {
-    const view = this.getReactView();
-    if (!view) {
-      new Notice(this.t.noPanel);
-      return;
-    }
-
-    if (!this.settings.apiKey) {
-      view.showError(this.t.noApiKey);
-      return;
-    }
-
-    const note = this.getActiveNote();
-    if (!note) {
-      view.showError(this.t.noNote);
-      return;
-    }
+    const prepared = await this.prepareTutoring();
+    if (!prepared) return;
+    const { view, note, slug } = prepared;
 
     try {
-      const slug = slugify(note.title);
       const exists = await this.sessionManager.sessionExists(slug);
 
       if (exists) {
@@ -303,14 +290,9 @@ export default class SocraticNoteTutorPlugin extends Plugin {
         }
       }
 
-      const lang = resolveLang(this.settings.language, note.content);
-      this.currentLang = lang;
-      this.t = getTranslations(lang);
-      this.engine.setLanguage(lang);
-      view.setLanguageFromContent(this.settings.language, note.content);
       await this.startNewSessionWithNote(note.title, note.content);
     } catch (error) {
-      view.showError(`${this.t.startFailed}: ${this.errMsg(error)}`);
+      view.showError(`${this.t.startFailed}: ${getErrorMessage(error)}`);
     }
   }
 
@@ -325,30 +307,11 @@ export default class SocraticNoteTutorPlugin extends Plugin {
   }
 
   async startTutoringWithSelection(selection: string): Promise<void> {
-    const view = this.getReactView();
-    if (!view) {
-      new Notice(this.t.noPanel);
-      return;
-    }
-    if (!this.settings.apiKey) {
-      view.showError(this.t.noApiKey);
-      return;
-    }
-
-    const note = this.getActiveNote();
-    if (!note) {
-      view.showError(this.t.noNote);
-      return;
-    }
+    const prepared = await this.prepareTutoring();
+    if (!prepared) return;
+    const { view, note, slug } = prepared;
 
     try {
-      const lang = resolveLang(this.settings.language, note.content);
-      this.currentLang = lang;
-      this.t = getTranslations(lang);
-      this.engine.setLanguage(lang);
-      view.setLanguageFromContent(this.settings.language, note.content);
-
-      const slug = slugify(note.title);
       this.llmService.setSessionSlug(slug);
       this.engine.setSessionSlug(slug);
       const base = this.sessionManager.createNewSession(note.title, note.content);
@@ -371,7 +334,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       view.addMessage(msg);
       await this.sessionManager.saveSession(this.session.noteSlug, this.session);
     } catch (error) {
-      view.showError(`${this.t.startFailed}: ${this.errMsg(error)}`);
+      view.showError(`${this.t.startFailed}: ${getErrorMessage(error)}`);
     }
   }
 
@@ -388,14 +351,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       return;
     }
     this.session = loaded;
-    this.llmService.setSessionSlug(slug);
-    this.engine.setSessionSlug(slug);
-    this.tracer?.startSession(slug, loaded.noteTitle, loaded.noteContent);
-    view.clearMessages();
-    view.setSessionActive(true);
-    for (const msg of this.session.messages) {
-      view.addMessage(msg);
-    }
+    await this.restoreSessionView(loaded, view);
     view.updateProgress(this.session);
   }
 
@@ -488,19 +444,9 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     const view = this.getReactView();
     if (!view) return;
 
-    const slug = this.session.noteSlug;
-    this.llmService.setSessionSlug(slug);
-    this.engine.setSessionSlug(slug);
-    this.tracer?.startSession(slug, this.session.noteTitle, this.session.noteContent);
+    await this.restoreSessionView(this.session, view);
 
     try {
-      view.clearMessages();
-      view.setSessionActive(true);
-
-      for (const msg of this.session.messages) {
-        view.addMessage(msg);
-      }
-
       const needsReview = this.session.concepts.filter(
         c => c.status === 'mastered' && c.lastReviewTime &&
           (Date.now() - c.lastReviewTime) / 1000 > c.reviewInterval
@@ -530,33 +476,23 @@ export default class SocraticNoteTutorPlugin extends Plugin {
         await this.continueTutoring();
       }
     } catch (error) {
-      view.showError(`${this.t.resumeFailed}: ${this.errMsg(error)}`);
+      view.showError(`${this.t.resumeFailed}: ${getErrorMessage(error)}`);
     }
   }
 
   private async runDiagnosis(): Promise<void> {
-    if (!this.session) return;
-    const view = this.getReactView();
-    if (!view) return;
-
-    try {
-      const msg = await this.engine.stepDiagnosis(this.session);
-      this.session.messages.push(msg);
+    await this.withSessionView(async (view) => {
+      const msg = await this.engine.stepDiagnosis(this.session!);
+      this.session!.messages.push(msg);
       view.addMessage(msg);
-      view.updateProgress(this.session);
-      await this.sessionManager.saveSession(this.session.noteSlug, this.session);
-    } catch (error) {
-      view.showError(`${this.t.diagnosisFailed}: ${this.errMsg(error)}`);
-    }
+      view.updateProgress(this.session!);
+      await this.sessionManager.saveSession(this.session!.noteSlug, this.session!);
+    }, this.t.diagnosisFailed);
   }
 
   private async extractConceptsAndBuildRoadmap(recursionDepth = 0): Promise<void> {
-    if (!this.session) return;
-    const view = this.getReactView();
-    if (!view) return;
-
-    try {
-      const { concepts } = await this.engine.stepExtractConcepts(this.session);
+    await this.withSessionView(async (view) => {
+      const { concepts } = await this.engine.stepExtractConcepts(this.session!);
 
       const conceptStates: ConceptState[] = concepts.map(c => ({
         id: c.id,
@@ -573,7 +509,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       this.session!.concepts = conceptStates;
       this.session!.conceptOrder = concepts.map(c => c.id);
 
-      const roadmapHtml = generateRoadmapHtml(this.session);
+      const roadmapHtml = generateRoadmapHtml(this.session!);
       await this.sessionManager.saveRoadmap(this.session!.noteSlug, roadmapHtml);
       await this.sessionManager.saveSession(this.session!.noteSlug, this.session!);
 
@@ -584,13 +520,11 @@ export default class SocraticNoteTutorPlugin extends Plugin {
         content: this.t.conceptTransition,
         timestamp: Date.now(),
       };
-      this.session.messages.push(transitionMsg);
+      this.session!.messages.push(transitionMsg);
       view.addMessage(transitionMsg);
 
       await this.continueTutoring(recursionDepth + 1);
-    } catch (error) {
-      view.showError(`${this.t.conceptExtractFailed}: ${this.errMsg(error)}`);
-    }
+    }, this.t.conceptExtractFailed);
   }
 
   private async continueTutoring(recursionDepth = 0): Promise<void> {
@@ -696,32 +630,28 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       view.updateProgress(this.session);
       await this.sessionManager.saveSession(this.session.noteSlug, this.session);
     } catch (error) {
-      view.showError(`Error: ${this.errMsg(error)}`);
+      view.showError(`Error: ${getErrorMessage(error)}`);
     }
   }
 
   private async runMasteryCheck(conceptId: string): Promise<void> {
-    if (!this.session) return;
-    const view = this.getReactView();
-    if (!view) return;
-
-    try {
-      const concept = this.session.concepts.find(c => c.id === conceptId);
+    await this.withSessionView(async (view) => {
+      const concept = this.session!.concepts.find(c => c.id === conceptId);
       if (!concept) return;
 
-      const { message: msg, dimensions } = await this.engine.stepMasteryCheck(this.session, conceptId);
-      this.session.messages.push(msg);
+      const { message: msg, dimensions } = await this.engine.stepMasteryCheck(this.session!, conceptId);
+      this.session!.messages.push(msg);
       view.addMessage(msg);
 
       const selfAssessment = await view.showSelfAssessment();
 
       const { passed, newScore } = this.engine.updateMasteryFromCheck(
-        this.session, conceptId, dimensions, selfAssessment
+        this.session!, conceptId, dimensions, selfAssessment
       );
 
       if (passed && newScore >= this.settings.masteryThreshold) {
         concept.status = 'mastered';
-        this.session.currentConceptId = null;
+        this.session!.currentConceptId = null;
         const masteryMsg: TutorMessage = {
           id: generateId(),
           role: 'tutor',
@@ -729,11 +659,11 @@ export default class SocraticNoteTutorPlugin extends Plugin {
           content: `${concept.name} mastered! (${newScore}%)`,
           timestamp: Date.now(),
         };
-        this.session.messages.push(masteryMsg);
+        this.session!.messages.push(masteryMsg);
         view.addMessage(masteryMsg);
         await this.runPracticeTask(concept.id);
       } else {
-        this.session.currentConceptId = conceptId;
+        this.session!.currentConceptId = conceptId;
         concept.status = 'learning';
         const feedbackMsg: TutorMessage = {
           id: generateId(),
@@ -742,71 +672,51 @@ export default class SocraticNoteTutorPlugin extends Plugin {
           content: `Mastery: ${newScore}%`,
           timestamp: Date.now(),
         };
-        this.session.messages.push(feedbackMsg);
+        this.session!.messages.push(feedbackMsg);
         view.addMessage(feedbackMsg);
       }
 
-      view.updateProgress(this.session);
-      await this.sessionManager.saveSession(this.session.noteSlug, this.session);
-    } catch (error) {
-      view.showError(`${this.t.masteryCheckFailed}: ${this.errMsg(error)}`);
-    }
+      view.updateProgress(this.session!);
+      await this.sessionManager.saveSession(this.session!.noteSlug, this.session!);
+    }, this.t.masteryCheckFailed);
   }
 
   private async runPracticeTask(conceptId: string): Promise<void> {
-    if (!this.session) return;
-    const view = this.getReactView();
-    if (!view) return;
-
-    try {
-      const msg = await this.engine.stepPracticeTask(this.session, conceptId);
-      this.session.messages.push(msg);
+    await this.withSessionView(async (view) => {
+      const msg = await this.engine.stepPracticeTask(this.session!, conceptId);
+      this.session!.messages.push(msg);
       view.addMessage(msg);
 
-      view.updateProgress(this.session);
-      await this.sessionManager.saveSession(this.session.noteSlug, this.session);
-    } catch (error) {
-      view.showError(`${this.t.practiceFailed}: ${this.errMsg(error)}`);
-    }
+      view.updateProgress(this.session!);
+      await this.sessionManager.saveSession(this.session!.noteSlug, this.session!);
+    }, this.t.practiceFailed);
   }
 
   private async runReview(concept: { id: string }): Promise<void> {
-    if (!this.session) return;
-    const view = this.getReactView();
-    if (!view) return;
-
-    try {
-      const fullConcept = this.session.concepts.find(c => c.id === concept.id);
+    await this.withSessionView(async (view) => {
+      const fullConcept = this.session!.concepts.find(c => c.id === concept.id);
       if (!fullConcept) return;
 
-      const msg = await this.engine.stepReviewQuestion(this.session, fullConcept);
-      this.session.messages.push(msg);
+      const msg = await this.engine.stepReviewQuestion(this.session!, fullConcept);
+      this.session!.messages.push(msg);
       view.addMessage(msg);
-    } catch (error) {
-      view.showError(`${this.t.reviewFailed}: ${this.errMsg(error)}`);
-    }
+    }, this.t.reviewFailed);
   }
 
   private async finalizeSession(): Promise<void> {
-    if (!this.session) return;
-    const view = this.getReactView();
-    if (!view) return;
-
-    try {
-      this.session.completed = true;
+    await this.withSessionView(async () => {
+      this.session!.completed = true;
 
       // Extract and persist session memories
-      const memories = this.sessionManager.memoryExtractor.extractFromSession(this.session);
+      const memories = this.sessionManager.memoryExtractor.extractFromSession(this.session!);
       for (const memory of memories) {
         await this.sessionManager.memoryManager.save(memory);
       }
 
       await this.generateSessionOutputs();
       await this.updateLearnerProfile();
-      await this.sessionManager.saveSession(this.session.noteSlug, this.session);
-    } catch (error) {
-      view.showError(`${this.t.finalizeFailed}: ${this.errMsg(error)}`);
-    }
+      await this.sessionManager.saveSession(this.session!.noteSlug, this.session!);
+    }, this.t.finalizeFailed);
   }
 
   private async generateSessionOutputs(): Promise<void> {
@@ -824,7 +734,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       const finalSummaryHtml = generateSummaryHtml(this.session, true);
       await this.sessionManager.saveSummary(slug, finalSummaryHtml, true);
     } catch (error) {
-      new Notice(`${this.t.outputFailed}: ${this.errMsg(error)}`);
+      new Notice(`${this.t.outputFailed}: ${getErrorMessage(error)}`);
     }
   }
 
@@ -860,7 +770,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       };
       await this.sessionManager.saveLearnerProfile(updatedProfile);
     } catch (error) {
-      new Notice(`${this.t.profileFailed}: ${this.errMsg(error)}`);
+      new Notice(`${this.t.profileFailed}: ${getErrorMessage(error)}`);
     }
   }
 
@@ -875,7 +785,68 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     }).length;
   }
 
-  private errMsg(error: unknown): string {
-    return error instanceof Error ? error.message : 'Unknown error';
+  /**
+   * Wraps tutoring operations with session/view validation and error handling.
+   * Eliminates the repetitive pattern across all tutoring flow methods.
+   */
+  private async withSessionView(
+    fn: (view: ReactSocraticView) => Promise<void>,
+    errorLabel: string,
+  ): Promise<void> {
+    if (!this.session) return;
+    const view = this.getReactView();
+    if (!view) return;
+    try {
+      await fn(view);
+    } catch (error) {
+      view.showError(`${errorLabel}: ${getErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Common setup shared by startTutoring and startTutoringWithSelection.
+   * Validates prerequisites, detects language, and configures the engine.
+   */
+  private async prepareTutoring(): Promise<
+    { view: ReactSocraticView; note: { title: string; content: string }; slug: string; lang: Lang } | null
+  > {
+    const view = this.getReactView();
+    if (!view) {
+      new Notice(this.t.noPanel);
+      return null;
+    }
+    if (!this.settings.apiKey) {
+      view.showError(this.t.noApiKey);
+      return null;
+    }
+    const note = this.getActiveNote();
+    if (!note) {
+      view.showError(this.t.noNote);
+      return null;
+    }
+    const lang = resolveLang(this.settings.language, note.content);
+    this.currentLang = lang;
+    this.t = getTranslations(lang);
+    this.engine.setLanguage(lang);
+    view.setLanguageFromContent(this.settings.language, note.content);
+    const slug = slugify(note.title);
+    return { view, note, slug, lang };
+  }
+
+  /**
+   * Restore session UI state shared by resumeSession and loadSessionFromHistory.
+   */
+  private async restoreSessionView(session: SessionState, view: ReactSocraticView): Promise<void> {
+    const slug = session.noteSlug;
+    this.llmService.setSessionSlug(slug);
+    this.engine.setSessionSlug(slug);
+    this.tracer?.startSession(slug, session.noteTitle, session.noteContent);
+
+    view.clearMessages();
+    view.setSessionActive(true);
+
+    for (const msg of session.messages) {
+      view.addMessage(msg);
+    }
   }
 }

@@ -3,6 +3,9 @@ import { LLMService, type LLMResponse } from '../llm/LLMService';
 import { PromptBuilder, assembleBlocks, type SystemPromptContext } from '../llm/PromptBuilder';
 import { type ToolCall, type ToolDefinition, validateToolCalls, getToolDefinitionsForPhase } from '../llm/tools';
 import { generateId } from '../utils/helpers';
+import { containsValidJson, tryParseJson, extractBalancedJsonObjects } from '../utils/json';
+import { withRetry } from '../utils/async';
+import { formatInterval } from '../utils/text';
 import type { Tracer } from '../debug/Tracer';
 
 const MAX_CONTEXT_MESSAGES = 15;
@@ -228,10 +231,7 @@ export class SocraticEngine {
 
       const tutorMsg = this.buildTutorMessageFromParsed(parsed);
 
-      if (!tutorMsg.content?.trim() && !tutorMsg.question) {
-        tutorMsg.content = '...';
-      }
-
+      this.ensureContent(tutorMsg);
       return tutorMsg;
     });
   }
@@ -266,10 +266,7 @@ export class SocraticEngine {
         };
       }
 
-      if (!tutorMsg.content?.trim() && !tutorMsg.question) {
-        tutorMsg.content = '...';
-      }
-
+      this.ensureContent(tutorMsg);
       return tutorMsg;
     });
   }
@@ -330,49 +327,21 @@ Requirements:
   }
 
   private tryExtractConceptsFromText(text: string): ExtractedConcept[] {
-    // Try markdown code block first
-    const codeBlockMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-    const targetText = codeBlockMatch ? codeBlockMatch[1]! : text;
+    const parsed = tryParseJson<Record<string, unknown>>(text);
+    if (!parsed) return [];
 
-    // Scan for balanced JSON objects using a brace stack.
-    // Non-greedy regex fails on nested objects (e.g. {"concepts":[{"id":"a"}]}),
-    // so we explicitly track brace depth to find complete top-level objects.
-    const candidates = this.extractBalancedJsonObjects(targetText);
-    for (const candidate of candidates) {
-      try {
-        const parsed = JSON.parse(candidate) as Record<string, unknown>;
-        const concepts = parsed.concepts ?? parsed.data ?? parsed.result;
-        if (Array.isArray(concepts) && concepts.length > 0) {
-          return concepts.map((c) => ({
-            id: String((c as Record<string, unknown>).id ?? ''),
-            name: String((c as Record<string, unknown>).name ?? ''),
-            description: String((c as Record<string, unknown>).description ?? ''),
-            dependencies: Array.isArray((c as Record<string, unknown>).dependencies)
-              ? (c as Record<string, unknown>).dependencies as string[]
-              : [],
-          })).filter((c) => c.id && c.name);
-        }
-      } catch {
-        // Try next candidate
-      }
+    const concepts = parsed.concepts ?? parsed.data ?? parsed.result;
+    if (Array.isArray(concepts) && concepts.length > 0) {
+      return concepts.map((c) => ({
+        id: String((c as Record<string, unknown>).id ?? ''),
+        name: String((c as Record<string, unknown>).name ?? ''),
+        description: String((c as Record<string, unknown>).description ?? ''),
+        dependencies: Array.isArray((c as Record<string, unknown>).dependencies)
+          ? (c as Record<string, unknown>).dependencies as string[]
+          : [],
+      })).filter((c) => c.id && c.name);
     }
     return [];
-  }
-
-  private extractBalancedJsonObjects(text: string): string[] {
-    const objects: string[] = [];
-    const stack: number[] = [];
-    for (let i = 0; i < text.length; i++) {
-      if (text[i] === '{') {
-        stack.push(i);
-      } else if (text[i] === '}' && stack.length > 0) {
-        const start = stack.pop()!;
-        if (stack.length === 0) {
-          objects.push(text.slice(start, i + 1));
-        }
-      }
-    }
-    return objects;
   }
 
   async stepAskQuestion(session: SessionState): Promise<TutorMessage> {
@@ -555,22 +524,6 @@ Requirements:
     return leakagePatterns.some(p => p.test(text));
   }
 
-  private containsValidJson(text: string): boolean {
-    if (!text.trim()) return false;
-    try {
-      const codeBlock = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-      const jsonText = codeBlock ? codeBlock[1]! : text;
-      const jsonMatch = jsonText.match(/\{[\s\S]*?\}/);
-      if (jsonMatch) {
-        JSON.parse(jsonMatch[0]);
-        return true;
-      }
-    } catch {
-      // Not valid JSON
-    }
-    return false;
-  }
-
   /**
    * Chat with automatic self-correction for preamble/empty/invalid outputs.
    * When the model returns preamble text instead of structured data, the
@@ -596,7 +549,7 @@ Requirements:
       // Valid if: has tool calls, or contains valid JSON, or has non-preamble text
       // AND does not leak system-prompt instructions.
       const hasToolCall = response.toolCalls && response.toolCalls.length > 0;
-      const hasValidJson = this.containsValidJson(content);
+      const hasValidJson = containsValidJson(content);
       const isPre = !hasToolCall && !hasValidJson && this.isPreamble(content);
       const isEmpty = !hasToolCall && !hasValidJson && !content;
       const isLeakage = this.containsSystemPromptLeakage(content);
@@ -753,7 +706,7 @@ Requirements:
       const jsonText = codeBlock ? codeBlock[1]! : raw;
       // Use balanced brace extraction to correctly handle nested objects
       // (non-greedy regex \{[\s\S]*?\} would stop at the first inner \}).
-      const candidates = this.extractBalancedJsonObjects(jsonText);
+      const candidates = extractBalancedJsonObjects(jsonText);
       for (const candidate of candidates) {
         try {
           const parsed = JSON.parse(candidate) as LLMStructuredResponse;
@@ -890,6 +843,12 @@ Requirements:
       return parsed.type as TutorMessage['type'];
     }
     return 'info';
+  }
+
+  private ensureContent(msg: TutorMessage, fallback = '...'): void {
+    if (!msg.content?.trim() && !msg.question) {
+      msg.content = fallback;
+    }
   }
 
   private formatInterval(seconds: number): string {

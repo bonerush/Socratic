@@ -1,6 +1,8 @@
-import { type Vault, type TFile, normalizePath } from 'obsidian';
-import { SESSION_DIR, type SessionState, type LearnerProfile, type ConceptState, type MisconceptionRecord, type SessionSummary, emptyMemoryCollection } from '../types';
+import { type Vault, normalizePath } from 'obsidian';
+import { SESSION_DIR, type SessionState, type LearnerProfile, type SessionSummary, emptyMemoryCollection } from '../types';
 import { slugify } from '../utils/helpers';
+import { ensureDir } from '../utils/vault';
+import { extractJsonFromMarkdown } from '../utils/json';
 import { MemoryManager } from '../memory/MemoryManager';
 import { MemoryExtractor } from '../memory/MemoryExtractor';
 
@@ -44,7 +46,7 @@ export class SessionManager {
 
   async saveSession(noteSlug: string, state: SessionState): Promise<void> {
     const dir = this.getSessionDir(noteSlug);
-    await this.ensureDir(dir);
+    await ensureDir(this.vault, dir);
     state.updatedAt = Date.now();
     await this.vault.adapter.write(`${dir}/session.json`, JSON.stringify(state, null, 2));
     await this.writeSessionMarkdown(dir, state);
@@ -56,7 +58,7 @@ export class SessionManager {
       const exists = await this.vault.adapter.exists(path);
       if (!exists) return null;
       const content = await this.vault.adapter.read(path);
-      const profile = JSON.parse(this.extractJsonFromMarkdown(content)) as LearnerProfile;
+      const profile = JSON.parse(extractJsonFromMarkdown(content)) as LearnerProfile;
       // Ensure new fields exist on legacy profiles
       if (!profile.memories) profile.memories = emptyMemoryCollection();
       if (!profile.preferredConcepts) profile.preferredConcepts = [];
@@ -69,20 +71,20 @@ export class SessionManager {
 
   async saveLearnerProfile(profile: LearnerProfile): Promise<void> {
     const path = normalizePath(`${this.basePath}/learner-profile.md`);
-    await this.ensureDir(this.basePath);
+    await ensureDir(this.vault, this.basePath);
     const content = `# Learner Profile\n\nLast updated: ${new Date(profile.lastUpdated).toISOString()}\n\n\`\`\`json\n${JSON.stringify(profile, null, 2)}\n\`\`\`\n`;
     await this.vault.adapter.write(path, content);
   }
 
   async saveRoadmap(noteSlug: string, html: string): Promise<void> {
     const dir = this.getSessionDir(noteSlug);
-    await this.ensureDir(dir);
+    await ensureDir(this.vault, dir);
     await this.vault.adapter.write(`${dir}/roadmap.html`, html);
   }
 
   async saveSummary(noteSlug: string, html: string, isFinal: boolean): Promise<void> {
     const dir = this.getSessionDir(noteSlug);
-    await this.ensureDir(dir);
+    await ensureDir(this.vault, dir);
     const filename = isFinal ? 'summary-final.html' : 'summary.html';
     await this.vault.adapter.write(`${dir}/${filename}`, html);
   }
@@ -143,82 +145,60 @@ export class SessionManager {
           fileNames = Array.isArray(listing.files) ? listing.files : [];
         }
       } catch {
-        // If list() fails, fallback to empty
         return [];
       }
 
-      // Some adapters return full paths (including basePath prefix) instead of
-      // relative names. We must strip the prefix before checking startsWith('.').
       const basePrefix = this.basePath.endsWith('/') ? this.basePath : this.basePath + '/';
+      const candidates = new Set<string>();
 
-      const summaries: SessionSummary[] = [];
       for (const folder of folderNames) {
         if (typeof folder !== 'string') continue;
-        let folderName = folder.replace(/\/$/, '');
-        if (folderName.startsWith(basePrefix)) {
-          folderName = folderName.slice(basePrefix.length);
-        }
-        if (!folderName || folderName.startsWith('.')) continue;
-        const sessionPath = normalizePath(`${this.basePath}/${folderName}/session.json`);
-        if (!(await adapter.exists(sessionPath))) continue;
-        try {
-          const raw = await adapter.read(sessionPath);
-          const state = JSON.parse(raw) as SessionState;
-          summaries.push({
-            noteSlug: state.noteSlug,
-            noteTitle: state.noteTitle,
-            createdAt: state.createdAt,
-            updatedAt: state.updatedAt,
-            conceptCount: state.concepts.length,
-            completed: state.completed,
-            messageCount: state.messages.length,
-          });
-        } catch {
-          // Skip corrupted sessions
-        }
+        let name = folder.replace(/\/$/, '');
+        if (name.startsWith(basePrefix)) name = name.slice(basePrefix.length);
+        if (name && !name.startsWith('.')) candidates.add(name);
       }
 
-      // Fallback: if list() returned no folders but has files nested inside
-      // subdirectories, infer folders from file paths.
-      if (summaries.length === 0 && fileNames.length > 0) {
-        const inferredFolders = new Set<string>();
+      // Fallback: infer folders from nested file paths when list() returns no folders
+      if (candidates.size === 0 && fileNames.length > 0) {
         for (const file of fileNames) {
           if (typeof file !== 'string') continue;
           const slashIdx = file.indexOf('/');
-          if (slashIdx > 0) {
-            let name = file.slice(0, slashIdx);
-            if (name.startsWith(basePrefix)) {
-              name = name.slice(basePrefix.length);
-            }
-            if (name && !name.startsWith('.')) {
-              inferredFolders.add(name);
-            }
-          }
+          if (slashIdx <= 0) continue;
+          let name = file.slice(0, slashIdx);
+          if (name.startsWith(basePrefix)) name = name.slice(basePrefix.length);
+          if (name && !name.startsWith('.')) candidates.add(name);
         }
-        for (const folderName of inferredFolders) {
-          const sessionPath = normalizePath(`${this.basePath}/${folderName}/session.json`);
-          if (!(await adapter.exists(sessionPath))) continue;
-          try {
-            const raw = await adapter.read(sessionPath);
-            const state = JSON.parse(raw) as SessionState;
-            summaries.push({
-              noteSlug: state.noteSlug,
-              noteTitle: state.noteTitle,
-              createdAt: state.createdAt,
-              updatedAt: state.updatedAt,
-              conceptCount: state.concepts.length,
-              completed: state.completed,
-              messageCount: state.messages.length,
-            });
-          } catch {
-            // Skip corrupted sessions
-          }
-        }
+      }
+
+      const summaries: SessionSummary[] = [];
+      for (const folderName of candidates) {
+        const summary = await this.tryReadSessionSummary(folderName);
+        if (summary) summaries.push(summary);
       }
 
       return summaries.sort((a, b) => b.updatedAt - a.updatedAt);
     } catch {
       return [];
+    }
+  }
+
+  private async tryReadSessionSummary(folderName: string): Promise<SessionSummary | null> {
+    const sessionPath = normalizePath(`${this.basePath}/${folderName}/session.json`);
+    if (!(await this.vault.adapter.exists(sessionPath))) return null;
+    try {
+      const raw = await this.vault.adapter.read(sessionPath);
+      const state = JSON.parse(raw) as SessionState;
+      return {
+        noteSlug: state.noteSlug,
+        noteTitle: state.noteTitle,
+        createdAt: state.createdAt,
+        updatedAt: state.updatedAt,
+        conceptCount: state.concepts.length,
+        completed: state.completed,
+        messageCount: state.messages.length,
+      };
+    } catch {
+      return null;
     }
   }
 
@@ -237,14 +217,6 @@ export class SessionManager {
       messages: [],
       completed: false,
     };
-  }
-
-  private async ensureDir(dir: string): Promise<void> {
-    const adapter = this.vault.adapter;
-    const exists = await adapter.exists(dir);
-    if (!exists) {
-      await adapter.mkdir(normalizePath(dir));
-    }
   }
 
   private async writeSessionMarkdown(dir: string, state: SessionState): Promise<void> {
@@ -279,10 +251,5 @@ export class SessionManager {
     }
 
     await this.vault.adapter.write(`${dir}/session.md`, md);
-  }
-
-  private extractJsonFromMarkdown(content: string): string {
-    const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/);
-    return jsonMatch ? jsonMatch[1]! : content;
   }
 }

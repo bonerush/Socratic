@@ -15,7 +15,10 @@ export type TraceEventType =
   | 'self-correction'
   | 'session-start'
   | 'session-end'
-  | 'engine-step';
+  | 'engine-step'
+  | 'timer-start'
+  | 'timer-end'
+  | 'session-summary';
 
 export interface TraceEvent {
   id: string;
@@ -55,6 +58,7 @@ export class Tracer {
   private buffer: TraceEvent[] = [];
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private currentFilePath: string | null = null;
+  private activeTimers = new Map<string, number>();
 
   constructor(options: TracerOptions) {
     this.vault = options.vault;
@@ -128,6 +132,7 @@ export class Tracer {
 
   startSession(sessionSlug: string, noteTitle: string, noteContent: string): void {
     this.currentFilePath = null;
+    this.activeTimers.clear();
     this.push({
       id: generateTraceId(),
       timestamp: now(),
@@ -146,6 +151,24 @@ export class Tracer {
       data: {},
     });
     void this.forceFlush();
+  }
+
+  sessionSummary(
+    sessionSlug: string,
+    data: {
+      conceptCount: number;
+      masteredCount: number;
+      messageCount: number;
+      durationMs: number;
+    },
+  ): void {
+    this.push({
+      id: generateTraceId(),
+      timestamp: now(),
+      sessionSlug,
+      type: 'session-summary',
+      data,
+    });
   }
 
   // ── Engine steps ────────────────────────────────────────────
@@ -181,6 +204,35 @@ export class Tracer {
       phase,
       data: {},
     });
+  }
+
+  // ── Performance timers ──────────────────────────────────────
+
+  timerStart(sessionSlug: string, label: string): void {
+    const key = `${sessionSlug}:${label}`;
+    this.activeTimers.set(key, now());
+    this.push({
+      id: generateTraceId(),
+      timestamp: now(),
+      sessionSlug,
+      type: 'timer-start',
+      data: { label },
+    });
+  }
+
+  timerEnd(sessionSlug: string, label: string): number {
+    const key = `${sessionSlug}:${label}`;
+    const start = this.activeTimers.get(key);
+    const duration = start ? now() - start : 0;
+    this.activeTimers.delete(key);
+    this.push({
+      id: generateTraceId(),
+      timestamp: now(),
+      sessionSlug,
+      type: 'timer-end',
+      data: { label, durationMs: duration },
+    });
+    return duration;
   }
 
   // ── LLM calls ───────────────────────────────────────────────
@@ -309,5 +361,23 @@ export class Tracer {
       type: 'user-input',
       data: { inputType: type, content: content.slice(0, 5000) },
     });
+  }
+
+  // ── Trace file helpers ──────────────────────────────────────
+
+  getLatestTraceFilePath(): string | null {
+    return this.currentFilePath;
+  }
+
+  async listTraceFiles(): Promise<string[]> {
+    try {
+      const adapter = this.vault.adapter;
+      if (!(await adapter.exists(this.storagePath))) return [];
+      const listing = await adapter.list(this.storagePath);
+      if (!listing || typeof listing !== 'object' || !Array.isArray(listing.files)) return [];
+      return (listing.files as string[]).filter((f: string) => f.endsWith('.jsonl'));
+    } catch {
+      return [];
+    }
   }
 }

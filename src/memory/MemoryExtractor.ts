@@ -1,4 +1,4 @@
-import type { SessionState, Memory } from '../types';
+import type { SessionState, Memory, MemoryType } from '../types';
 import { generateId } from '../utils/helpers';
 
 /**
@@ -19,60 +19,41 @@ export class MemoryExtractor {
   extractFromSession(session: SessionState): Memory[] {
     const memories: Memory[] = [];
     const now = Date.now();
-
-    // Extract concept-level memories
-    for (const concept of session.concepts) {
-      if (concept.status === 'mastered') {
-        memories.push({
-          id: generateId(),
-          type: 'user',
-          name: `Mastered: ${concept.name}`,
-          content: `Student demonstrated mastery of "${concept.name}" (${concept.masteryScore}%).`,
-          createdAt: now,
-          updatedAt: now,
-          source: session.noteSlug,
-        });
-      } else if (concept.status === 'learning' && concept.masteryScore < 40) {
-        memories.push({
-          id: generateId(),
-          type: 'feedback',
-          name: `Struggling: ${concept.name}`,
-          content: `Student is struggling with "${concept.name}" (score ${concept.masteryScore}%). May need additional scaffolding or simpler sub-questions.`,
-          createdAt: now,
-          updatedAt: now,
-          source: session.noteSlug,
-        });
-      }
-    }
-
-    // Extract misconception memories
-    for (const m of session.misconceptions) {
-      if (!m.resolved) {
-        memories.push({
-          id: generateId(),
-          type: 'feedback',
-          name: `Misconception: ${m.misconception.slice(0, 40)}`,
-          content: `Unresolved misconception: "${m.misconception}". Root cause: ${m.inferredRootCause}.`,
-          createdAt: now,
-          updatedAt: now,
-          source: session.noteSlug,
-        });
-      }
-    }
-
-    // Session-level project memory
-    const masteredCount = session.concepts.filter((c) => c.status === 'mastered').length;
-    memories.push({
+    const create = (type: MemoryType, name: string, content: string): Memory => ({
       id: generateId(),
-      type: 'project',
-      name: `Session: ${session.noteTitle}`,
-      content: `Session on "${session.noteTitle}" — ${masteredCount}/${session.concepts.length} concepts mastered. ${session.misconceptions.length} misconceptions recorded.`,
+      type,
+      name,
+      content,
       createdAt: now,
       updatedAt: now,
       source: session.noteSlug,
     });
 
+    for (const concept of session.concepts) {
+      if (concept.status === 'mastered') {
+        memories.push(
+          create('user', `Mastered: ${concept.name}`, `Student demonstrated mastery of "${concept.name}" (${concept.masteryScore}%).`),
+        );
+      } else if (concept.status === 'learning' && concept.masteryScore < 40) {
+        memories.push(
+          create('feedback', `Struggling: ${concept.name}`, `Student is struggling with "${concept.name}" (score ${concept.masteryScore}%). May need additional scaffolding or simpler sub-questions.`),
+        );
+      }
+    }
+
+    for (const m of session.misconceptions) {
+      if (!m.resolved) {
+        memories.push(
+          create('feedback', `Misconception: ${m.misconception.slice(0, 40)}`, `Unresolved misconception: "${m.misconception}". Root cause: ${m.inferredRootCause}.`),
+        );
+      }
+    }
+
+    const masteredCount = session.concepts.filter((c) => c.status === 'mastered').length;
+    memories.push(
+      create('project', `Session: ${session.noteTitle}`, `Session on "${session.noteTitle}" — ${masteredCount}/${session.concepts.length} concepts mastered. ${session.misconceptions.length} misconceptions recorded.`),
+    );
+
     return memories;
   }
-
 }
