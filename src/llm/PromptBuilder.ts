@@ -64,7 +64,7 @@ function buildToolsBlock(phase: string): PromptBlock {
   return {
     id: 'tools',
     priority: P_TOOLS,
-    content: `## Available Tools\nYou MUST call one of the following tools for EVERY response. Do NOT output plain text — plain text will be ignored by the system.\n\n${getToolDescriptions(phase).split('\n').map(line => `\t${line}`).join('\n')}`,
+    content: `## Available Tools\nYou MUST call one of the following tools for EVERY response. Do NOT output plain text — plain text will be ignored by the system.\n\n${getToolDescriptions(phase)}`,
   };
 }
 

@@ -144,18 +144,14 @@ export class ResponseHealer {
     let parsed = parseFn(response);
 
     // One extra healing attempt (chatWithSelfCorrection already retried 2×).
-    for (let attempt = 0; attempt < 1; attempt++) {
-      const isExtractEmpty = parsed.tool === 'extract_concepts' && (!parsed.concepts || parsed.concepts.length === 0);
-      const isContentEmpty = parsed.tool !== 'extract_concepts' && !parsed.content?.trim();
-      const isLeakage = containsSystemPromptLeakage(parsed.content || '');
-      const looksLikeQuestion = /[?？]/.test(parsed.content || '');
-      const impliesMultipleChoice = /以下哪个|哪一个|请选择|选项|方案|选择/i.test(parsed.content || '');
-      const isMissingOptions = looksLikeQuestion && impliesMultipleChoice && !parsed.options && parsed.questionType !== 'open-ended';
+    const isExtractEmpty = parsed.tool === 'extract_concepts' && (!parsed.concepts || parsed.concepts.length === 0);
+    const isContentEmpty = parsed.tool !== 'extract_concepts' && !parsed.content?.trim();
+    const isLeakage = containsSystemPromptLeakage(parsed.content || '');
+    const looksLikeQuestion = /[?？]/.test(parsed.content || '');
+    const impliesMultipleChoice = /以下哪个|哪一个|请选择|选项|方案|选择/i.test(parsed.content || '');
+    const isMissingOptions = looksLikeQuestion && impliesMultipleChoice && !parsed.options && parsed.questionType !== 'open-ended';
 
-      if (!isExtractEmpty && !isContentEmpty && !isLeakage && !isMissingOptions) {
-        return parsed;
-      }
-
+    if (isExtractEmpty || isContentEmpty || isLeakage || isMissingOptions) {
       let correction = '';
       const reason = isLeakage ? 'system-prompt-leakage' : isContentEmpty ? 'empty-content' : isMissingOptions ? 'missing-options' : 'empty-concepts';
       if (isLeakage) {

@@ -199,7 +199,7 @@ export class SessionDebugger {
     const masterySum = state.concepts.reduce((sum, c) => sum + c.masteryScore, 0);
 
     const diagnosisRounds = tutorMsgs.filter(
-      (m) => m.type === 'question' && (!m.question?.conceptId || m.question.conceptId === '')
+      (m) => m.type === 'question' && !m.question?.conceptId
     ).length;
 
     const teachingRounds = tutorMsgs.filter(

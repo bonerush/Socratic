@@ -63,17 +63,17 @@ export class TraceAnalyzer {
     const healingAttemptCount = events.filter((e) => e.type === 'healing-attempt').length;
     const llmCallCount = llmCalls.length;
 
-    // 1. Average LLM response time
+    // 1. Average LLM response time (O(n) two-pointer scan)
     let totalResponseTime = 0;
     let responseTimeCount = 0;
-    for (let i = 0; i < events.length; i++) {
-      const req = events[i];
-      if (req && req.type === 'llm-request') {
-        const responseEvent = events.slice(i + 1).find((e) => e.type === 'llm-response');
-        if (responseEvent) {
-          totalResponseTime += responseEvent.timestamp - req.timestamp;
-          responseTimeCount++;
-        }
+    let pendingRequest: TraceEvent | null = null;
+    for (const e of events) {
+      if (e.type === 'llm-request') {
+        pendingRequest = e;
+      } else if (e.type === 'llm-response' && pendingRequest) {
+        totalResponseTime += e.timestamp - pendingRequest.timestamp;
+        responseTimeCount++;
+        pendingRequest = null;
       }
     }
     const avgLlmResponseTimeMs = responseTimeCount > 0 ? Math.round(totalResponseTime / responseTimeCount) : 0;
