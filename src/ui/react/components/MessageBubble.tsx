@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useSocratic } from '../SocraticContext';
 import { OptionsBar } from './OptionsBar';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -11,6 +11,17 @@ interface MessageBubbleProps {
   message: TutorMessage;
 }
 
+function getCopyText(message: TutorMessage): string {
+  let text = message.content;
+  if (message.question?.options && message.question.options.length > 0) {
+    const labels = message.question.options.map((opt, i) =>
+      `${String.fromCharCode(65 + i)}. ${opt}`
+    );
+    text = `${text}\n\n${labels.join('\n')}`;
+  }
+  return text;
+}
+
 /**
  * Displays a single chat message bubble.
  *
@@ -20,7 +31,7 @@ interface MessageBubbleProps {
  * - Question options appear below the bubble content.
  */
 export function MessageBubble({ message }: MessageBubbleProps) {
-  const { onSelectOption, isProcessing, app, viewComponent } = useSocratic();
+  const { onSelectOption, isProcessing, app, viewComponent, t } = useSocratic();
   const isUser = message.role === 'user';
   const isSystem = message.type === 'system';
   const hasQuestion =
@@ -31,6 +42,18 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     if (isUser || isSystem) return false;
     return Date.now() - message.timestamp < FRESHNESS_THRESHOLD_MS;
   });
+
+  const [copyState, setCopyState] = useState<'idle' | 'success'>('idle');
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(getCopyText(message));
+      setCopyState('success');
+      setTimeout(() => setCopyState('idle'), 1500);
+    } catch {
+      setCopyState('idle');
+    }
+  }, [message]);
 
   const renderMarkdown = (content: string): React.ReactNode => (
     <MarkdownRenderer
@@ -44,6 +67,14 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   return (
     <div className={`socratic-message socratic-message-${isUser ? 'user' : 'tutor'}`}>
       <div className="socratic-message-bubble">
+        <button
+          className="socratic-message-copy"
+          onClick={handleCopy}
+          title={t.copyLabel}
+          aria-label={t.copyLabel}
+        >
+          {copyState === 'success' ? t.copySuccess : t.copyLabel}
+        </button>
         <div className="socratic-message-content">
           {shouldStream ? (
             <StreamingText

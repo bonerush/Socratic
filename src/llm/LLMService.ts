@@ -40,6 +40,7 @@ export class LLMService {
     temperature = 0.7,
     maxTokens = 2000,
     tools?: ToolDefinition[],
+    jsonMode = false,
   ): Promise<LLMResponse> {
     if (!this.settings.apiKey) {
       throw new Error('API key not configured. Please set it in plugin settings.');
@@ -59,6 +60,11 @@ export class LLMService {
     if (tools && this.supportsToolCalling()) {
       body['tools'] = tools;
       body['tool_choice'] = 'auto';
+    }
+
+    // Force JSON output when jsonMode is enabled (OpenAI-compatible APIs)
+    if (jsonMode) {
+      body['response_format'] = { type: 'json_object' };
     }
 
     const headers: Record<string, string> = {

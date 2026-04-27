@@ -76,6 +76,19 @@ export interface TranslationMap {
   masteryDesc: string;
   maxConceptsLabel: string;
   maxConceptsDesc: string;
+  // Navigation & note switching
+  exitToMain: string;
+  noteSwitchResumeTitle: string;
+  noteSwitchResumeContinue: string;
+  noteSwitchResumeRestart: string;
+  noteSwitchResumeCancel: string;
+  // Copy
+  copyLabel: string;
+  copySuccess: string;
+  copyFail: string;
+  // Selection tutoring
+  askAboutSelection: string;
+  explainSelectionPhase: string;
 }
 
 const en: TranslationMap = {
@@ -152,6 +165,16 @@ const en: TranslationMap = {
   masteryDesc: 'Minimum score (0-100) required to mark a concept as mastered.',
   maxConceptsLabel: 'Max concepts per session',
   maxConceptsDesc: 'Maximum number of concepts to extract from a single note.',
+  exitToMain: 'Back to Main',
+  noteSwitchResumeTitle: 'An unfinished session was found for this note. Would you like to continue or start fresh?',
+  noteSwitchResumeContinue: 'Continue',
+  noteSwitchResumeRestart: 'Start fresh',
+  noteSwitchResumeCancel: 'Cancel',
+  copyLabel: 'Copy',
+  copySuccess: 'Copied!',
+  copyFail: 'Copy failed',
+  askAboutSelection: 'Ask about selected text',
+  explainSelectionPhase: 'Explaining selection',
 };
 
 const zh: TranslationMap = {
@@ -228,6 +251,16 @@ const zh: TranslationMap = {
   masteryDesc: '将概念标记为已掌握所需的最低分数（0-100）。',
   maxConceptsLabel: '每会话最大概念数',
   maxConceptsDesc: '从单篇笔记中提取的最大概念数量。',
+  exitToMain: '返回主界面',
+  noteSwitchResumeTitle: '检测到该笔记有未完成的会话。是否继续上次的进度还是重新开始？',
+  noteSwitchResumeContinue: '继续',
+  noteSwitchResumeRestart: '重新开始',
+  noteSwitchResumeCancel: '取消',
+  copyLabel: '复制',
+  copySuccess: '已复制！',
+  copyFail: '复制失败',
+  askAboutSelection: '询问选中的文本',
+  explainSelectionPhase: '解释选文中',
 };
 
 const allTranslations: Record<Lang, TranslationMap> = { en, zh };

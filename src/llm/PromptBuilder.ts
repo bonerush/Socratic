@@ -73,24 +73,38 @@ const RESPONSE_FORMAT_BLOCK: PromptBlock = {
   id: 'response-format',
   priority: P_RESPONSE_FORMAT,
   content: `## Response Format
-Use the appropriate tool for what you want to do:
-- Ask a question → call \`ask_question\`
-- Provide guidance / hint / feedback → call \`provide_guidance\`
-- Assess mastery → call \`assess_mastery\`
-- Extract concepts → call \`extract_concepts\`
-- Send an informational message → call \`send_info\`
+You MUST output a single valid JSON object. No markdown code blocks, no preamble, no explanation — just raw JSON.
 
-Important: when function calling is unavailable, respond in JSON:
+JSON Schema:
 {
   "tool": "ask_question" | "provide_guidance" | "assess_mastery" | "extract_concepts" | "send_info",
-  "content": "your message",
+  "content": "string — required. Your teaching message or question text.",
   "questionType": "multiple-choice" | "open-ended" | null,
-  "options": [...],
-  "correctOptionIndex": 0 | null,
-  "conceptId": "current-concept-id",
-  "masteryCheck": { ... },
-  "misconceptionDetected": { ... }
-}`,
+  "options": ["string"] | null,
+  "correctOptionIndex": number | null,
+  "conceptId": "string | null",
+  "masteryCheck": {
+    "correctness": boolean,
+    "explanationDepth": boolean,
+    "novelApplication": boolean,
+    "conceptDiscrimination": boolean
+  } | null,
+  "misconceptionDetected": {
+    "misconception": "string",
+    "rootCause": "string"
+  } | null,
+  "concepts": [
+    { "id": "slug", "name": "string", "description": "string", "dependencies": ["slug"] }
+  ] | null
+}
+
+Rules:
+1. ALWAYS include the \\"tool\\" field.
+2. ALWAYS include the \\"content\\" field (can be empty string but never omit).
+3. For \\"extract_concepts\\", populate \\"concepts\\" array.
+4. For \\"ask_question\\", populate \\"questionType\\" and \\"options\\" when multiple-choice.
+5. For \\"assess_mastery\\", populate \\"masteryCheck\\".
+6. NEVER output text outside the JSON object. NEVER use markdown code blocks.`,
 };
 
 // ── Dynamic block builders ──────────────────────────────────
@@ -217,6 +231,20 @@ export class PromptBuilder {
 4. 概念区分（能区分相似概念）
 
 在响应的 masteryCheck 字段中为每个维度打分。`;
+  }
+
+  buildExplainSelectionPrompt(selection: string): string {
+    return `学生选中了笔记中的以下段落，希望你帮助理解并提出引导性问题：
+
+\`\`\`
+${selection}
+\`\`\`
+
+请：
+1. 简要解释这段内容的核心含义（用引导性语言，不要直接给完整答案）。
+2. 提出 1-2 个引导性问题，帮助学生深入理解这段内容。
+
+使用 ask_question 或 provide_guidance 工具返回你的回应。`;
   }
 
   buildConversationSummaryPrompt(messages: { role: string; content: string }[]): string {

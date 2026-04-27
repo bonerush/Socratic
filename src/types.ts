@@ -1,5 +1,4 @@
 export const PLUGIN_ID = 'socratic-note-tutor';
-const PLUGIN_NAME = 'Socratic Note Tutor';
 export const VIEW_TYPE_SOCRATIC = `${PLUGIN_ID}:socratic-view`;
 export const SESSION_DIR = '.socratic-sessions';
 

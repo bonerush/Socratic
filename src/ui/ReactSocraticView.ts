@@ -17,6 +17,7 @@ export interface ViewState {
   processingPhase: string | null;
   selfAssessment: { resolve: (level: SelfAssessmentLevel) => void } | null;
   sessionResume: { resolve: (choice: 'resume' | 'restart') => void } | null;
+  noteSwitchResume: { resolve: (choice: 'resume' | 'restart' | 'cancel') => void } | null;
   showHistory: boolean;
   [key: string]: unknown;
 }
@@ -41,6 +42,7 @@ export class ReactSocraticView extends ItemView {
     processingPhase: null,
     selfAssessment: null,
     sessionResume: null,
+    noteSwitchResume: null,
     showHistory: false,
   };
   private listeners = new Set<() => void>();
@@ -121,6 +123,17 @@ export class ReactSocraticView extends ItemView {
   resolveSessionResume(choice: 'resume' | 'restart'): void {
     this._state.sessionResume?.resolve(choice);
     this.updateState({ sessionResume: null });
+  }
+
+  showNoteSwitchResume(): Promise<'resume' | 'restart' | 'cancel'> {
+    return new Promise(resolve => {
+      this.updateState({ noteSwitchResume: { resolve } });
+    });
+  }
+
+  resolveNoteSwitchResume(choice: 'resume' | 'restart' | 'cancel'): void {
+    this._state.noteSwitchResume?.resolve(choice);
+    this.updateState({ noteSwitchResume: null });
   }
 
   // --- Plugin-facing API ---

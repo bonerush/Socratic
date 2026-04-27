@@ -18,6 +18,16 @@ export function SelfAssessment({ onSelect, disabled }: SelfAssessmentProps) {
   const { t } = useSocratic();
   const [selected, setSelected] = useState<SelfAssessmentLevel | null>(null);
 
+  React.useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onSelect('okay');
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onSelect]);
+
   const handleSelect = (level: SelfAssessmentLevel) => {
     if (disabled || selected !== null) return;
     setSelected(level);

@@ -1,12 +1,12 @@
 import { type SessionState, type TutorMessage, type Question, type ConceptState, type SelfAssessmentLevel, type MasteryDimension } from '../types';
-import { LLMService } from '../llm/LLMService';
+import { LLMService, type LLMResponse } from '../llm/LLMService';
 import { PromptBuilder, assembleBlocks, type SystemPromptContext } from '../llm/PromptBuilder';
-import { type ToolCall, validateToolCalls, getToolDefinitions } from '../llm/tools';
+import { type ToolCall, type ToolDefinition, validateToolCalls, getToolDefinitions } from '../llm/tools';
 import { generateId } from '../utils/helpers';
 
 const MAX_CONTEXT_MESSAGES = 15;
 const SUMMARY_THRESHOLD = 12;
-const MAX_RETRIES = 1;
+const MAX_RETRIES = 2;
 
 interface ExtractedConcept {
   id: string;
@@ -48,6 +48,7 @@ type EnginePhase =
   | 'practice_task'
   | 'review'
   | 'finalize'
+  | 'explain_selection'
   | null;
 
 type PhaseCallback = (phase: EnginePhase) => void;
@@ -73,6 +74,15 @@ export class SocraticEngine {
 
   private setPhase(phase: EnginePhase): void {
     this.phaseCallback?.(phase);
+  }
+
+  private async withPhase<T>(phase: EnginePhase, fn: () => Promise<T>): Promise<T> {
+    this.setPhase(phase);
+    try {
+      return await fn();
+    } finally {
+      this.setPhase(null);
+    }
   }
 
   private getPhase(session: SessionState): SystemPromptContext['phase'] {
@@ -184,36 +194,54 @@ export class SocraticEngine {
 
   // --- Step Methods ---
 
+  async stepExplainSelection(session: SessionState, selection: string): Promise<TutorMessage> {
+    return this.withPhase('explain_selection', async () => {
+      const systemPrompt = this.buildContextAwareSystemPrompt(session);
+      const prompt = this.promptBuilder.buildExplainSelectionPrompt(selection);
+      const messages = this.buildConversationContext(session);
+
+      const response = await this.chatWithSelfCorrection(systemPrompt, [
+        ...messages,
+        { role: 'user', content: prompt },
+      ], 0.7, 2000, getToolDefinitions());
+
+      const parsed = this.parseStructuredResponse(response);
+      const tutorMsg = this.buildTutorMessageFromParsed(parsed);
+
+      if (!tutorMsg.content?.trim() && !tutorMsg.question) {
+        tutorMsg.content = '请告诉我你对这段内容的初步理解是什么？';
+      }
+
+      return tutorMsg;
+    });
+  }
+
   async stepDiagnosis(session: SessionState, round = 1): Promise<TutorMessage> {
-    this.setPhase('diagnosis');
-    try {
+    return this.withPhase('diagnosis', async () => {
       const systemPrompt = this.buildContextAwareSystemPrompt(session);
       const diagnosisPrompt = round === 1
         ? this.promptBuilder.buildDiagnosisPrompt()
         : '根据学生上一个回答，追问一个诊断性问题，更好地了解他们的知识水平。关注他们理解不清的地方。';
       const messages = this.buildConversationContext(session);
 
-      const response = await this.withRetry(() => this.llm.chat(systemPrompt, [
+      const response = await this.chatWithSelfCorrection(systemPrompt, [
         ...messages,
         { role: 'user', content: diagnosisPrompt },
-      ], 0.7, 2000, getToolDefinitions()));
+      ], 0.7, 2000, getToolDefinitions());
 
       const parsed = this.parseStructuredResponse(response);
       return this.buildTutorMessageFromParsed(parsed);
-    } finally {
-      this.setPhase(null);
-    }
+    });
   }
 
   async stepExtractConcepts(session: SessionState): Promise<{ concepts: ExtractedConcept[] }> {
-    this.setPhase('extract_concepts');
-    try {
+    return this.withPhase('extract_concepts', async () => {
       const systemPrompt = this.buildContextAwareSystemPrompt(session);
       const extractionPrompt = this.promptBuilder.buildConceptExtractionPrompt();
 
-      const response = await this.withRetry(() => this.llm.chat(systemPrompt, [
+      const response = await this.chatWithSelfCorrection(systemPrompt, [
         { role: 'user', content: extractionPrompt },
-      ], 0.3, 2000, getToolDefinitions()));
+      ], 0.3, 2000, getToolDefinitions());
 
       const parsed = this.parseStructuredResponse(response);
 
@@ -257,9 +285,7 @@ Requirements:
         `Failed to extract concepts from the note content. ` +
         `Raw response: ${rawContent.slice(0, 500)}`,
       );
-    } finally {
-      this.setPhase(null);
-    }
+    });
   }
 
   private tryExtractConceptsFromText(text: string): ExtractedConcept[] {
@@ -309,8 +335,7 @@ Requirements:
   }
 
   async stepAskQuestion(session: SessionState): Promise<TutorMessage> {
-    this.setPhase('ask_question');
-    try {
+    return this.withPhase('ask_question', async () => {
       const systemPrompt = this.buildContextAwareSystemPrompt(session);
       const currentConcept = session.concepts.find(c => c.id === session.currentConceptId);
       const prompt = currentConcept
@@ -318,10 +343,10 @@ Requirements:
         : 'Continue the tutoring session with appropriate Socratic questions based on the conversation so far.';
 
       const messages = this.buildConversationContext(session);
-      const response = await this.withRetry(() => this.llm.chat(systemPrompt, [
+      const response = await this.chatWithSelfCorrection(systemPrompt, [
         ...messages,
         { role: 'user', content: prompt },
-      ], 0.7, 2000, getToolDefinitions()));
+      ], 0.7, 2000, getToolDefinitions());
 
       const parsed = this.parseStructuredResponse(response);
       const tutorMsg = this.buildTutorMessageFromParsed(parsed);
@@ -332,14 +357,11 @@ Requirements:
       }
 
       return tutorMsg;
-    } finally {
-      this.setPhase(null);
-    }
+    });
   }
 
   async stepMasteryCheck(session: SessionState, conceptId: string): Promise<{ message: TutorMessage; dimensions: MasteryDimension }> {
-    this.setPhase('mastery_check');
-    try {
+    return this.withPhase('mastery_check', async () => {
       const systemPrompt = this.buildContextAwareSystemPrompt(session);
       const concept = session.concepts.find(c => c.id === conceptId);
       if (!concept) throw new Error(`Concept ${conceptId} not found`);
@@ -347,10 +369,10 @@ Requirements:
       const prompt = this.promptBuilder.buildMasteryCheckPrompt(concept.name);
       const messages = this.buildConversationContext(session);
 
-      const response = await this.withRetry(() => this.llm.chat(systemPrompt, [
+      const response = await this.chatWithSelfCorrection(systemPrompt, [
         ...messages,
         { role: 'user', content: prompt },
-      ], 0.5, 1500, getToolDefinitions()));
+      ], 0.5, 1500, getToolDefinitions());
 
       const parsed = this.parseStructuredResponse(response);
       const message = this.buildTutorMessageFromParsed(parsed);
@@ -362,14 +384,11 @@ Requirements:
       };
 
       return { message, dimensions };
-    } finally {
-      this.setPhase(null);
-    }
+    });
   }
 
   async stepPracticeTask(session: SessionState, conceptId: string): Promise<TutorMessage> {
-    this.setPhase('practice_task');
-    try {
+    return this.withPhase('practice_task', async () => {
       const systemPrompt = this.buildContextAwareSystemPrompt(session);
       const concept = session.concepts.find(c => c.id === conceptId);
       if (!concept) throw new Error(`Concept ${conceptId} not found`);
@@ -381,35 +400,30 @@ Requirements:
 
 要求具体且贴合此概念。`;
       const messages = this.buildConversationContext(session);
-      const response = await this.withRetry(() => this.llm.chat(systemPrompt, [
+      const response = await this.chatWithSelfCorrection(systemPrompt, [
         ...messages,
         { role: 'user', content: prompt },
-      ], 0.7, 2000, getToolDefinitions()));
+      ], 0.7, 2000, getToolDefinitions());
 
       const parsed = this.parseStructuredResponse(response);
       return this.buildTutorMessageFromParsed(parsed);
-    } finally {
-      this.setPhase(null);
-    }
+    });
   }
 
   async stepReviewQuestion(session: SessionState, concept: ConceptState): Promise<TutorMessage> {
-    this.setPhase('review');
-    try {
+    return this.withPhase('review', async () => {
       const systemPrompt = this.buildContextAwareSystemPrompt(session);
       const prompt = `概念 "${concept.name}" 的快速复习问题（上次复习间隔：${this.formatInterval(concept.reviewInterval)}）。只问一个快速问题。如果回答正确，认可并加倍间隔。如果答错，记录挫折。`;
       const messages = this.buildConversationContext(session);
 
-      const response = await this.withRetry(() => this.llm.chat(systemPrompt, [
+      const response = await this.chatWithSelfCorrection(systemPrompt, [
         ...messages,
         { role: 'user', content: prompt },
-      ], 0.5, 500, getToolDefinitions()));
+      ], 0.5, 500, getToolDefinitions());
 
       const parsed = this.parseStructuredResponse(response);
       return this.buildTutorMessageFromParsed(parsed);
-    } finally {
-      this.setPhase(null);
-    }
+    });
   }
 
   updateMasteryFromCheck(session: SessionState, conceptId: string, dimensions: MasteryDimension, selfAssessment: SelfAssessmentLevel): { passed: boolean; newScore: number } {
@@ -431,7 +445,94 @@ Requirements:
     return { passed, newScore: concept.masteryScore };
   }
 
-  // --- Error Recovery ---
+  // --- Self-Healing & Error Recovery ---
+
+  private readonly PREAMBLE_PATTERNS = [
+    /^我先/,
+    /^好的[，,]/,
+    /^让我/,
+    /^现在/,
+    /^接下来/,
+    /^首先/,
+    /^那么/,
+    /^我来/,
+    /^请稍等/,
+    /^正在/,
+    /^思考/,
+    /^(我)?(要|会|将|来)(先|开始|进行)/,
+    /^我(先|来|将|会|要)/,
+    /^OK[，,]/i,
+    /^Okay[，,]/i,
+  ];
+
+  private isPreamble(text: string): boolean {
+    const trimmed = text.trim();
+    if (!trimmed) return true;
+    return this.PREAMBLE_PATTERNS.some(p => p.test(trimmed));
+  }
+
+  private containsValidJson(text: string): boolean {
+    if (!text.trim()) return false;
+    try {
+      const codeBlock = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+      const jsonText = codeBlock ? codeBlock[1]! : text;
+      const jsonMatch = jsonText.match(/\{[\s\S]*?\}/);
+      if (jsonMatch) {
+        JSON.parse(jsonMatch[0]);
+        return true;
+      }
+    } catch {
+      // Not valid JSON
+    }
+    return false;
+  }
+
+  /**
+   * Chat with automatic self-correction for preamble/empty/invalid outputs.
+   * When the model returns preamble text instead of structured data, the
+   * bad output is added to the conversation history along with a correction
+   * prompt, and the request is retried.
+   */
+  private async chatWithSelfCorrection(
+    systemPrompt: string,
+    messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+    temperature: number,
+    maxTokens: number,
+    tools?: ToolDefinition[],
+    jsonMode = true,
+  ): Promise<LLMResponse> {
+    const mutableMessages = [...messages];
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      const response = await this.withRetry(() =>
+        this.llm.chat(systemPrompt, mutableMessages, temperature, maxTokens, tools, jsonMode)
+      );
+      const content = response.content?.trim() || '';
+
+      // Valid if: has tool calls, or contains valid JSON, or has non-preamble text
+      const hasToolCall = response.toolCalls && response.toolCalls.length > 0;
+      const hasValidJson = this.containsValidJson(content);
+      const isPre = !hasToolCall && !hasValidJson && this.isPreamble(content);
+      const isEmpty = !hasToolCall && !hasValidJson && !content;
+
+      if (!isPre && !isEmpty) {
+        return response;
+      }
+
+      if (attempt < MAX_RETRIES) {
+        mutableMessages.push({ role: 'assistant', content: content || '(empty response)' });
+        mutableMessages.push({
+          role: 'user',
+          content: '你的输出格式不正确。你必须输出一个有效的JSON对象（不要markdown代码块，不要前言）。严格按照system prompt中的JSON Schema格式输出。',
+        });
+      }
+    }
+
+    // Return last response even if malformed — caller will use parse fallback
+    return await this.withRetry(() =>
+      this.llm.chat(systemPrompt, mutableMessages, temperature, maxTokens, tools, jsonMode)
+    );
+  }
 
   private async withRetry<T>(fn: () => Promise<T>): Promise<T> {
     let lastError: Error | null = null;
@@ -457,7 +558,9 @@ Requirements:
       if (validated.valid.length > 0) {
         const first = validated.valid[0]!;
         const parsed = this.buildResponseFromValidatedTool(first.name, first.args);
-        if (!parsed.content && response.content?.trim()) {
+        // Only fall back to raw content when the tool didn't supply its own content.
+        // Empty string is valid for extract_concepts, so don't overwrite it.
+        if (parsed.content == null && response.content?.trim()) {
           parsed.content = response.content.trim();
         }
         return parsed;
@@ -471,7 +574,7 @@ Requirements:
       try {
         const args = JSON.parse(firstCall.function.arguments) as Record<string, unknown>;
         const parsed = this.buildResponseFromValidatedTool(firstCall.function.name, args);
-        if (!parsed.content && response.content?.trim()) {
+        if (parsed.content == null && response.content?.trim()) {
           parsed.content = response.content.trim();
         }
         return parsed;
@@ -483,13 +586,18 @@ Requirements:
     // Path 2: JSON fallback in content
     try {
       const raw = response.content || '';
-      // Prefer markdown code blocks, then fall back to first JSON object
       const codeBlock = raw.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
       const jsonText = codeBlock ? codeBlock[1]! : raw;
-      const jsonMatch = jsonText.match(/\{[\s\S]*?\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]) as LLMStructuredResponse;
-        if (parsed.content || parsed.concepts) return parsed;
+      // Use balanced brace extraction to correctly handle nested objects
+      // (non-greedy regex \{[\s\S]*?\} would stop at the first inner \}).
+      const candidates = this.extractBalancedJsonObjects(jsonText);
+      for (const candidate of candidates) {
+        try {
+          const parsed = JSON.parse(candidate) as LLMStructuredResponse;
+          if (parsed.tool || parsed.content || parsed.concepts) return parsed;
+        } catch {
+          // Try next candidate
+        }
       }
     } catch {
       // Fall through

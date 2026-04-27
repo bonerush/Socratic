@@ -9,6 +9,16 @@ interface SessionResumeProps {
 export function SessionResume({ onChoice, disabled }: SessionResumeProps) {
   const { t } = useSocratic();
 
+  React.useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onChoice('restart');
+      }
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onChoice]);
+
   return (
     <div className="socratic-message socratic-message-tutor">
       <div className="socratic-message-bubble socratic-resume-dialog">

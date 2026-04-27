@@ -58,6 +58,25 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       },
     });
 
+    this.addCommand({
+      id: 'ask-about-selection',
+      name: 'Ask about selected text',
+      checkCallback: (checking) => {
+        const view = this.app.workspace.getActiveViewOfType(MarkdownView);
+        if (view && view.editor.somethingSelected()) {
+          if (!checking) this.startTutoringWithSelection(view.editor.getSelection());
+          return true;
+        }
+        return false;
+      },
+    });
+
+    this.registerEvent(
+      this.app.workspace.on('active-leaf-change', (leaf) => {
+        this.handleActiveLeafChange(leaf);
+      })
+    );
+
     this.addSettingTab(new SocraticSettingTab(this.app, this));
 
     if (this.app.workspace.layoutReady) {
@@ -129,6 +148,68 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     return null;
   }
 
+  async exitToMainScreen(): Promise<void> {
+    const view = this.getReactView();
+    if (view) {
+      // Resolve any open dialogs with cancel/defaults before resetting UI
+      const state = view.getViewState();
+      if (state.selfAssessment) {
+        view.resolveSelfAssessment('okay');
+      }
+      if (state.sessionResume) {
+        view.resolveSessionResume('restart');
+      }
+      if (state.noteSwitchResume) {
+        view.resolveNoteSwitchResume('cancel');
+      }
+      view.clearMessages();
+      view.setSessionActive(false);
+    }
+    this.session = null;
+  }
+
+  private async handleActiveLeafChange(leaf: WorkspaceLeaf | null): Promise<void> {
+    if (!leaf) return;
+    const view = leaf.view;
+    if (!(view instanceof MarkdownView)) return;
+    const file = view.file;
+    if (!file) return;
+
+    const noteTitle = file.name.replace(/\.md$/, '');
+    const slug = slugify(noteTitle);
+
+    if (this.session && this.session.noteSlug === slug) return;
+
+    const reactView = this.getReactView();
+    if (!reactView) return;
+
+    const state = reactView.getViewState();
+
+    // If noteSwitchResume dialog is open, cancel it and continue processing the new note
+    if (state.noteSwitchResume) {
+      reactView.resolveNoteSwitchResume('cancel');
+    } else if (state.selfAssessment || state.sessionResume) {
+      // Do not interrupt other dialogs
+      return;
+    }
+
+    await this.exitToMainScreen();
+
+    const exists = await this.sessionManager.sessionExists(slug);
+    if (!exists) return;
+
+    const choice = await reactView.showNoteSwitchResume();
+    if (choice === 'resume') {
+      const loaded = await this.sessionManager.loadSession(slug);
+      if (loaded) {
+        this.session = loaded;
+        await this.resumeSession();
+      }
+    } else if (choice === 'restart') {
+      await this.sessionManager.deleteSession(slug);
+    }
+  }
+
   /** Dialog: self-assessment, called by engine, returns promise */
   async showSelfAssessment(): Promise<SelfAssessmentLevel> {
     const view = this.getReactView();
@@ -143,6 +224,20 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     return view.showSessionResume();
   }
 
+  private getActiveNote(): { title: string; content: string } | null {
+    let activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
+    if (!activeView) {
+      const mdLeaves = this.app.workspace.getLeavesOfType('markdown');
+      if (mdLeaves.length > 0 && mdLeaves[0]?.view instanceof MarkdownView) {
+        activeView = mdLeaves[0].view;
+      }
+    }
+    if (!activeView) return null;
+    const content = activeView.editor.getValue();
+    const title = activeView.file?.name?.replace(/\.md$/, '') || 'Untitled';
+    return content.trim() ? { title, content } : null;
+  }
+
   async startTutoring(): Promise<void> {
     const view = this.getReactView();
     if (!view) {
@@ -155,27 +250,14 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       return;
     }
 
-    let activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!activeView) {
-      const mdLeaves = this.app.workspace.getLeavesOfType('markdown');
-      if (mdLeaves.length > 0 && mdLeaves[0]?.view instanceof MarkdownView) {
-        activeView = mdLeaves[0].view;
-      } else {
-        view.showError(this.t.noNote);
-        return;
-      }
-    }
-
-    const noteContent = activeView.editor.getValue();
-    const noteTitle = activeView.file?.name?.replace(/\.md$/, '') || 'Untitled';
-
-    if (!noteContent.trim()) {
-      view.showError(this.t.emptyNote);
+    const note = this.getActiveNote();
+    if (!note) {
+      view.showError(this.t.noNote);
       return;
     }
 
     try {
-      const slug = slugify(noteTitle);
+      const slug = slugify(note.title);
       const exists = await this.sessionManager.sessionExists(slug);
 
       if (exists) {
@@ -192,12 +274,12 @@ export default class SocraticNoteTutorPlugin extends Plugin {
         }
       }
 
-      const lang = resolveLang(this.settings.language, noteContent);
+      const lang = resolveLang(this.settings.language, note.content);
       this.currentLang = lang;
       this.t = getTranslations(lang);
       this.engine.setLanguage(lang);
-      view.setLanguageFromContent(this.settings.language, noteContent);
-      await this.startNewSessionWithNote(noteTitle, noteContent);
+      view.setLanguageFromContent(this.settings.language, note.content);
+      await this.startNewSessionWithNote(note.title, note.content);
     } catch (error) {
       view.showError(`${this.t.startFailed}: ${this.errMsg(error)}`);
     }
@@ -210,6 +292,53 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       view.clearMessages();
       view.setSessionActive(false);
       view.showError(this.t.sessionCleared);
+    }
+  }
+
+  async startTutoringWithSelection(selection: string): Promise<void> {
+    const view = this.getReactView();
+    if (!view) {
+      new Notice(this.t.noPanel);
+      return;
+    }
+    if (!this.settings.apiKey) {
+      view.showError(this.t.noApiKey);
+      return;
+    }
+
+    const note = this.getActiveNote();
+    if (!note) {
+      view.showError(this.t.noNote);
+      return;
+    }
+
+    try {
+      const lang = resolveLang(this.settings.language, note.content);
+      this.currentLang = lang;
+      this.t = getTranslations(lang);
+      this.engine.setLanguage(lang);
+      view.setLanguageFromContent(this.settings.language, note.content);
+
+      const slug = slugify(note.title);
+      const base = this.sessionManager.createNewSession(note.title, note.content);
+      this.session = {
+        ...base,
+        currentConceptId: null,
+        concepts: [],
+        conceptOrder: [],
+        misconceptions: [],
+        messages: [],
+      };
+
+      view.clearMessages();
+      view.setSessionActive(true);
+
+      const msg = await this.engine.stepExplainSelection(this.session, selection);
+      this.session.messages.push(msg);
+      view.addMessage(msg);
+      await this.sessionManager.saveSession(this.session.noteSlug, this.session);
+    } catch (error) {
+      view.showError(`${this.t.startFailed}: ${this.errMsg(error)}`);
     }
   }
 
@@ -499,6 +628,12 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       }
 
       view.updateProgress(this.session);
+
+      // Guard: don't ask a new question if the last message is already a pending question
+      const lastMsg = this.session.messages[this.session.messages.length - 1];
+      if (lastMsg && lastMsg.role === 'tutor' && (lastMsg.type === 'question' || lastMsg.question !== undefined)) {
+        return;
+      }
 
       const msg = await this.engine.stepAskQuestion(this.session);
       this.session.messages.push(msg);

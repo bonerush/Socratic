@@ -5,6 +5,7 @@ import { ProgressPanel } from './components/ProgressPanel';
 import { SelfAssessment } from './components/SelfAssessment';
 import { SessionResume } from './components/SessionResume';
 import { SessionHistory } from './components/SessionHistory';
+import { NoteSwitchResume } from './components/NoteSwitchResume';
 import type { ReactSocraticView } from '../ReactSocraticView';
 
 interface SocraticAppProps {
@@ -20,7 +21,7 @@ export function SocraticApp({ view }: SocraticAppProps) {
 }
 
 function SocraticAppInner() {
-  const { t, isSessionActive, isProcessing, dialogState, resolveSelfAssessment, resolveSessionResume, showHistory, setShowHistory } = useSocratic();
+  const { t, isSessionActive, isProcessing, dialogState, resolveSelfAssessment, resolveSessionResume, resolveNoteSwitchResume, showHistory, setShowHistory, onExitToMain } = useSocratic();
 
   return (
     <div className="socratic-view">
@@ -30,6 +31,16 @@ function SocraticAppInner() {
           <span className="socratic-status">
             {isSessionActive ? t.viewStatusReady : t.noActiveSession}
           </span>
+          {isSessionActive && (
+            <button
+              className="socratic-btn socratic-btn-ghost"
+              onClick={onExitToMain}
+              disabled={isProcessing}
+              title={t.exitToMain}
+            >
+              {t.exitToMain}
+            </button>
+          )}
           <button
             className="socratic-btn socratic-btn-ghost"
             onClick={() => setShowHistory(true)}
@@ -49,6 +60,12 @@ function SocraticAppInner() {
             onChoice={resolveSessionResume}
             disabled={false}
           />
+        </div>
+      )}
+
+      {dialogState.noteSwitchResume && (
+        <div className="socratic-dialog-overlay">
+          <NoteSwitchResume />
         </div>
       )}
 

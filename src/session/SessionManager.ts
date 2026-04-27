@@ -101,10 +101,33 @@ export class SessionManager {
     try {
       const exists = await adapter.exists(this.basePath);
       if (!exists) return [];
-      const { folders } = await adapter.list(this.basePath);
+
+      let folderNames: string[] = [];
+      let fileNames: string[] = [];
+      try {
+        const listing = await adapter.list(this.basePath);
+        if (listing && typeof listing === 'object') {
+          folderNames = Array.isArray(listing.folders) ? listing.folders : [];
+          fileNames = Array.isArray(listing.files) ? listing.files : [];
+        }
+      } catch {
+        // If list() fails, fallback to empty
+        return [];
+      }
+
+      // Some adapters return full paths (including basePath prefix) instead of
+      // relative names. We must strip the prefix before checking startsWith('.').
+      const basePrefix = this.basePath.endsWith('/') ? this.basePath : this.basePath + '/';
+
       const summaries: SessionSummary[] = [];
-      for (const folder of folders) {
-        const sessionPath = normalizePath(`${this.basePath}/${folder}/session.json`);
+      for (const folder of folderNames) {
+        if (typeof folder !== 'string') continue;
+        let folderName = folder.replace(/\/$/, '');
+        if (folderName.startsWith(basePrefix)) {
+          folderName = folderName.slice(basePrefix.length);
+        }
+        if (!folderName || folderName.startsWith('.')) continue;
+        const sessionPath = normalizePath(`${this.basePath}/${folderName}/session.json`);
         if (!(await adapter.exists(sessionPath))) continue;
         try {
           const raw = await adapter.read(sessionPath);
@@ -122,6 +145,45 @@ export class SessionManager {
           // Skip corrupted sessions
         }
       }
+
+      // Fallback: if list() returned no folders but has files nested inside
+      // subdirectories, infer folders from file paths.
+      if (summaries.length === 0 && fileNames.length > 0) {
+        const inferredFolders = new Set<string>();
+        for (const file of fileNames) {
+          if (typeof file !== 'string') continue;
+          const slashIdx = file.indexOf('/');
+          if (slashIdx > 0) {
+            let name = file.slice(0, slashIdx);
+            if (name.startsWith(basePrefix)) {
+              name = name.slice(basePrefix.length);
+            }
+            if (name && !name.startsWith('.')) {
+              inferredFolders.add(name);
+            }
+          }
+        }
+        for (const folderName of inferredFolders) {
+          const sessionPath = normalizePath(`${this.basePath}/${folderName}/session.json`);
+          if (!(await adapter.exists(sessionPath))) continue;
+          try {
+            const raw = await adapter.read(sessionPath);
+            const state = JSON.parse(raw) as SessionState;
+            summaries.push({
+              noteSlug: state.noteSlug,
+              noteTitle: state.noteTitle,
+              createdAt: state.createdAt,
+              updatedAt: state.updatedAt,
+              conceptCount: state.concepts.length,
+              completed: state.completed,
+              messageCount: state.messages.length,
+            });
+          } catch {
+            // Skip corrupted sessions
+          }
+        }
+      }
+
       return summaries.sort((a, b) => b.updatedAt - a.updatedAt);
     } catch {
       return [];

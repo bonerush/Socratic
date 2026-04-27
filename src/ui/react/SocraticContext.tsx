@@ -7,6 +7,7 @@ import { ReactSocraticView } from '../ReactSocraticView';
 interface DialogState {
   selfAssessment: { resolve: (level: SelfAssessmentLevel) => void } | null;
   sessionResume: { resolve: (choice: 'resume' | 'restart') => void } | null;
+  noteSwitchResume: { resolve: (choice: 'resume' | 'restart' | 'cancel') => void } | null;
 }
 
 interface SocraticContextType {
@@ -30,11 +31,13 @@ interface SocraticContextType {
   onStartTutoring: () => Promise<void>;
   onNewSession: () => Promise<void>;
   onViewRoadmap: () => Promise<void>;
+  onExitToMain: () => Promise<void>;
 
   // Dialog state & callbacks for React components
   dialogState: DialogState;
   resolveSelfAssessment: (level: SelfAssessmentLevel) => void;
   resolveSessionResume: (choice: 'resume' | 'restart') => void;
+  resolveNoteSwitchResume: (choice: 'resume' | 'restart' | 'cancel') => void;
 
   showHistory: boolean;
   setShowHistory: (show: boolean) => void;
@@ -74,6 +77,7 @@ export function SocraticProvider({ view, children }: SocraticProviderProps) {
   const dialogState: DialogState = {
     selfAssessment: state.selfAssessment,
     sessionResume: state.sessionResume,
+    noteSwitchResume: state.noteSwitchResume,
   };
 
   const resolveSelfAssessmentFn = useCallback((level: SelfAssessmentLevel) => {
@@ -84,53 +88,44 @@ export function SocraticProvider({ view, children }: SocraticProviderProps) {
     view.resolveSessionResume(choice);
   }, [view]);
 
-  const onSendMessageFn = useCallback(async (text: string) => {
+  const resolveNoteSwitchResumeFn = useCallback((choice: 'resume' | 'restart' | 'cancel') => {
+    view.resolveNoteSwitchResume(choice);
+  }, [view]);
+
+  const withProcessing = useCallback(async (fn: () => Promise<void>, errorLabel: string) => {
     view.setProcessing(true);
     try {
-      await plugin.processUserResponse(text);
+      await fn();
     } catch (e) {
-      view.showError(e instanceof Error ? e.message : 'Error sending message');
+      view.showError(e instanceof Error ? e.message : errorLabel);
     } finally {
       view.setProcessing(false);
     }
-  }, [view, plugin]);
+  }, [view]);
+
+  const onSendMessageFn = useCallback(async (text: string) => {
+    await withProcessing(() => plugin.processUserResponse(text), 'Error sending message');
+  }, [withProcessing, plugin]);
 
   const onSelectOptionFn = useCallback(async (option: string, index: number) => {
-    view.setProcessing(true);
-    try {
-      await plugin.processChoiceSelection(option, index);
-    } catch (e) {
-      view.showError(e instanceof Error ? e.message : 'Error selecting option');
-    } finally {
-      view.setProcessing(false);
-    }
-  }, [view, plugin]);
+    await withProcessing(() => plugin.processChoiceSelection(option, index), 'Error selecting option');
+  }, [withProcessing, plugin]);
 
   const onStartTutoringFn = useCallback(async () => {
-    view.setProcessing(true);
-    try {
-      await plugin.startTutoring();
-    } catch (e) {
-      view.showError(e instanceof Error ? e.message : 'Error starting tutoring');
-    } finally {
-      view.setProcessing(false);
-    }
-  }, [view, plugin]);
+    await withProcessing(() => plugin.startTutoring(), 'Error starting tutoring');
+  }, [withProcessing, plugin]);
 
   const onNewSessionFn = useCallback(async () => {
-    view.setProcessing(true);
-    try {
-      await plugin.startNewSession();
-    } catch (e) {
-      view.showError(e instanceof Error ? e.message : 'Error creating new session');
-    } finally {
-      view.setProcessing(false);
-    }
-  }, [view, plugin]);
+    await withProcessing(() => plugin.startNewSession(), 'Error creating new session');
+  }, [withProcessing, plugin]);
 
   const onViewRoadmapFn = useCallback(async () => {
     await plugin.openRoadmap();
   }, [plugin]);
+
+  const onExitToMainFn = useCallback(async () => {
+    await withProcessing(() => plugin.exitToMainScreen(), 'Error exiting to main');
+  }, [withProcessing, plugin]);
 
   const setShowHistoryFn = useCallback((show: boolean) => {
     view.setShowHistory(show);
@@ -141,27 +136,15 @@ export function SocraticProvider({ view, children }: SocraticProviderProps) {
   }, [plugin]);
 
   const loadSessionFromHistoryFn = useCallback(async (slug: string) => {
-    view.setProcessing(true);
-    try {
+    await withProcessing(async () => {
       await plugin.loadSessionFromHistory(slug);
       view.setShowHistory(false);
-    } catch (e) {
-      view.showError(e instanceof Error ? e.message : 'Error loading session');
-    } finally {
-      view.setProcessing(false);
-    }
-  }, [view, plugin]);
+    }, 'Error loading session');
+  }, [withProcessing, plugin, view]);
 
   const deleteSessionFromHistoryFn = useCallback(async (slug: string) => {
-    view.setProcessing(true);
-    try {
-      await plugin.deleteSessionFromHistory(slug);
-    } catch (e) {
-      view.showError(e instanceof Error ? e.message : 'Error deleting session');
-    } finally {
-      view.setProcessing(false);
-    }
-  }, [view, plugin]);
+    await withProcessing(() => plugin.deleteSessionFromHistory(slug), 'Error deleting session');
+  }, [withProcessing, plugin]);
 
   const contextValue: SocraticContextType = {
     messages: state.messages,
@@ -179,9 +162,11 @@ export function SocraticProvider({ view, children }: SocraticProviderProps) {
     onStartTutoring: onStartTutoringFn,
     onNewSession: onNewSessionFn,
     onViewRoadmap: onViewRoadmapFn,
+    onExitToMain: onExitToMainFn,
     dialogState,
     resolveSelfAssessment: resolveSelfAssessmentFn,
     resolveSessionResume: resolveSessionResumeFn,
+    resolveNoteSwitchResume: resolveNoteSwitchResumeFn,
     showHistory: state.showHistory,
     setShowHistory: setShowHistoryFn,
     listSessionHistory: listSessionHistoryFn,
