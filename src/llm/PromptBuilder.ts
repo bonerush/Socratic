@@ -43,7 +43,7 @@ const CORE_RULES_BLOCK: PromptBlock = {
 1. 绝不要直接给出答案——只提出引导性问题、要求解释、给出最小提示或呈现反例。
 2. 先诊断——在深入内容之前评估学生已有的知识。
 3. 掌握门控——每个概念在正确性、解释深度、新颖应用和概念区分方面需要 80%+ 的分数才能进阶。
-4. 每轮问 1-2 个问题——保持专注，不要堆砌。
+4. 每轮只问一个问题——等学生回答后再继续下一个。
 5. 要有耐心但要严格——鼓励学生，但绝不要让误解滑过。使用反例让学生发现矛盾。
 6. 匹配用户的语言——保留技术术语的原词并附简要解释。
 7. ALL teaching must be based SOLELY on the provided note content — do not introduce external information.
@@ -60,14 +60,16 @@ const METHODOLOGY_BLOCK: PromptBlock = {
 - 显式追踪误解：如果学生暴露出误解，用反例来探查。`,
 };
 
-const TOOLS_BLOCK: PromptBlock = {
-  id: 'tools',
-  priority: P_TOOLS,
-  content: `## Available Tools
+function buildToolsBlock(phase: string): PromptBlock {
+  return {
+    id: 'tools',
+    priority: P_TOOLS,
+    content: `## Available Tools
 You may call the following tools to interact with the student:
 
-${getToolDescriptions().split('\n').map(line => `\t${line}`).join('\n')}`,
-};
+${getToolDescriptions(phase).split('\n').map(line => `\t${line}`).join('\n')}`,
+  };
+}
 
 const RESPONSE_FORMAT_BLOCK: PromptBlock = {
   id: 'response-format',
@@ -77,7 +79,7 @@ You MUST output a single valid JSON object. No markdown code blocks, no preamble
 
 JSON Schema:
 {
-  "tool": "ask_question" | "provide_guidance" | "assess_mastery" | "extract_concepts" | "send_info",
+  "tool": "provide_guidance" | "assess_mastery" | "extract_concepts" | "send_info",
   "content": "string — required. Your teaching message or question text.",
   "questionType": "multiple-choice" | "open-ended" | null,
   "options": ["string"] | null,
@@ -102,7 +104,7 @@ Rules:
 1. ALWAYS include the \\"tool\\" field.
 2. ALWAYS include the \\"content\\" field (can be empty string but never omit).
 3. For \\"extract_concepts\\", populate \\"concepts\\" array.
-4. For \\"ask_question\\", populate \\"questionType\\" and \\"options\\" when multiple-choice.
+4. For \\"provide_guidance\\", populate \\"questionType\\" and \\"options\\" when including a multiple-choice question.
 5. For \\"assess_mastery\\", populate \\"masteryCheck\\".
 6. NEVER output text outside the JSON object. NEVER use markdown code blocks.`,
 };
@@ -184,7 +186,7 @@ export class PromptBuilder {
       METHODOLOGY_BLOCK,
       buildPhaseBlock(ctx.phase, ctx.currentConcept?.name),
       buildLanguageBlock(ctx.language),
-      TOOLS_BLOCK,
+      buildToolsBlock(ctx.phase),
       RESPONSE_FORMAT_BLOCK,
     ];
 
@@ -202,7 +204,7 @@ export class PromptBuilder {
   }
 
   buildDiagnosisPrompt(): string {
-    return '请先诊断学生的当前理解程度。问 1-2 个问题（选择题和开放题混合）来评估他们对这个主题的已有知识。现在还不要教学——只做诊断。';
+    return '请先诊断学生的当前理解程度。一次只问一个问题（选择题或开放题）来评估他们对这个主题的已有知识。现在还不要教学——只做诊断。';
   }
 
   buildConceptExtractionPrompt(): string {
@@ -242,9 +244,9 @@ ${selection}
 
 请：
 1. 简要解释这段内容的核心含义（用引导性语言，不要直接给完整答案）。
-2. 提出 1-2 个引导性问题，帮助学生深入理解这段内容。
+2. 提出一个引导性问题，帮助学生深入理解这段内容。
 
-使用 ask_question 或 provide_guidance 工具返回你的回应。`;
+使用 provide_guidance 工具返回你的回应。`;
   }
 
   buildConversationSummaryPrompt(messages: { role: string; content: string }[]): string {

@@ -116,6 +116,29 @@ export class SocraticSettingTab extends PluginSettingTab {
           this.plugin.settings.maxConceptsPerSession = value;
           await this.plugin.saveSettings();
         }));
+
+    new Setting(containerEl)
+      .setName('Debug Mode')
+      .setDesc('Enable tracing of LLM calls, engine steps, and prompts for debugging. Trace files are saved as JSONL in the debug storage path.')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.debugMode)
+        .onChange(async value => {
+          this.plugin.settings.debugMode = value;
+          await this.plugin.saveSettings();
+          this.plugin.updateDebugMode();
+        }));
+
+    new Setting(containerEl)
+      .setName('Debug Trace Path')
+      .setDesc('Directory for debug trace files (defaults to session storage path /debug).')
+      .addText(text => text
+        .setPlaceholder('')
+        .setValue(this.plugin.settings.debugStoragePath)
+        .onChange(async value => {
+          this.plugin.settings.debugStoragePath = value;
+          await this.plugin.saveSettings();
+          this.plugin.updateDebugPath();
+        }));
   }
 
   private updateTranslations(): void {

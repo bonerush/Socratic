@@ -8,6 +8,23 @@ interface OptionsBarProps {
   disabled: boolean;
 }
 
+/**
+ * Strip common alphabetical prefix patterns from option text.
+ * LLMs often emit options like "A. xxx", "A、xxx", "A) xxx", "A xxx",
+ * which clash with the auto-generated labels we render.
+ */
+function cleanOptionText(text: string, index: number): string {
+  const expectedLabel = String.fromCharCode(65 + index);
+  const patterns = [
+    new RegExp(`^[${expectedLabel}${expectedLabel.toLowerCase()}][\.、。:：,，!！?？）\\)\\]\\}\\-\\s]+\\s*`),
+    new RegExp(`^[${expectedLabel}${expectedLabel.toLowerCase()}]\\s+`),
+  ];
+  for (const p of patterns) {
+    if (p.test(text)) return text.replace(p, '');
+  }
+  return text;
+}
+
 export function OptionsBar({ question, onSelect, disabled }: OptionsBarProps) {
   const [selectedIndex, setSelectedIndex] = React.useState<number | null>(null);
 
@@ -23,6 +40,7 @@ export function OptionsBar({ question, onSelect, disabled }: OptionsBarProps) {
     <div className="socratic-options">
       {question.options.map((option, index) => {
         const isSelected = selectedIndex === index;
+        const cleaned = cleanOptionText(option, index);
         return (
           <button
             key={index}
@@ -31,7 +49,7 @@ export function OptionsBar({ question, onSelect, disabled }: OptionsBarProps) {
             disabled={disabled || selectedIndex !== null}
           >
             <span className="socratic-option-label">{String.fromCharCode(65 + index)}</span>
-            <span className="socratic-option-text">{option}</span>
+            <span className="socratic-option-text">{cleaned}</span>
           </button>
         );
       })}

@@ -23,7 +23,7 @@ interface SocraticContextType {
   app: App;
   viewComponent: Component;
 
-  // Current engine phase shown in typing indicator (e.g. 'diagnosis', 'ask_question').
+  // Current engine phase shown in typing indicator (e.g. 'diagnosis', 'teaching').
   processingPhase: string | null;
 
   onSendMessage: (text: string) => Promise<void>;

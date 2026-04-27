@@ -90,6 +90,38 @@ export class SessionManager {
   async deleteSession(noteSlug: string): Promise<void> {
     const dir = this.getSessionDir(noteSlug);
     try {
+      // Obsidian's remove() cannot delete non-empty directories, so we must
+      // delete each file individually before removing the directory.
+      const exists = await this.vault.adapter.exists(dir);
+      if (!exists) return;
+
+      let files: string[] = [];
+      try {
+        const listing = await this.vault.adapter.list(dir);
+        if (listing && typeof listing === 'object') {
+          files = Array.isArray(listing.files) ? listing.files : [];
+        }
+      } catch {
+        // list() may fail; fall back to known file names
+        files = [
+          `${dir}/session.json`,
+          `${dir}/session.md`,
+          `${dir}/roadmap.html`,
+          `${dir}/summary.html`,
+          `${dir}/summary-final.html`,
+        ];
+      }
+
+      for (const file of files) {
+        if (typeof file !== 'string') continue;
+        const filePath = file.startsWith(dir) ? file : normalizePath(`${dir}/${file}`);
+        try {
+          await this.vault.adapter.remove(filePath);
+        } catch {
+          // File may not exist
+        }
+      }
+
       await this.vault.adapter.remove(dir);
     } catch {
       // Directory may not exist

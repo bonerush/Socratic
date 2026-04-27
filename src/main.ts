@@ -13,12 +13,14 @@ import {
 import { generateId, slugify } from './utils/helpers';
 import { getTranslations, resolveLang, type Lang } from './i18n/translations';
 import { generateRoadmapHtml, generateSummaryHtml } from './templates';
+import { Tracer } from './debug/Tracer';
 
 export default class SocraticNoteTutorPlugin extends Plugin {
   settings: SocraticPluginSettings;
   private sessionManager!: SessionManager;
   private llmService!: LLMService;
   private engine!: SocraticEngine;
+  private tracer: Tracer | null = null;
   private session: SessionState | null = null;
   private currentLang: Lang = 'zh';
   private t = getTranslations('zh');
@@ -32,6 +34,8 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     this.engine.setPhaseCallback((phase) => {
       this.getReactView()?.setProcessingPhase(phase);
     });
+
+    this.initTracer();
 
     this.registerView(VIEW_TYPE_SOCRATIC, (leaf) => new ReactSocraticView(leaf, this));
 
@@ -98,6 +102,28 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
+  private getDebugStoragePath(): string {
+    return this.settings.debugStoragePath || `${this.settings.sessionStoragePath || '.socratic-sessions'}/debug`;
+  }
+
+  private initTracer(): void {
+    this.tracer = new Tracer({
+      vault: this.app.vault,
+      enabled: this.settings.debugMode,
+      storagePath: this.getDebugStoragePath(),
+    });
+    this.llmService?.setTracer(this.tracer);
+    this.engine?.setTracer(this.tracer);
+  }
+
+  updateDebugMode(): void {
+    this.tracer?.setEnabled(this.settings.debugMode);
+  }
+
+  updateDebugPath(): void {
+    this.tracer?.updateStoragePath(this.getDebugStoragePath());
+  }
+
   async activateView(): Promise<void> {
     const { workspace } = this.app;
     let leaf: WorkspaceLeaf | null = null;
@@ -149,6 +175,9 @@ export default class SocraticNoteTutorPlugin extends Plugin {
   }
 
   async exitToMainScreen(): Promise<void> {
+    if (this.session) {
+      this.tracer?.endSession(this.session.noteSlug);
+    }
     const view = this.getReactView();
     if (view) {
       // Resolve any open dialogs with cancel/defaults before resetting UI
@@ -320,6 +349,8 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       view.setLanguageFromContent(this.settings.language, note.content);
 
       const slug = slugify(note.title);
+      this.llmService.setSessionSlug(slug);
+      this.engine.setSessionSlug(slug);
       const base = this.sessionManager.createNewSession(note.title, note.content);
       this.session = {
         ...base,
@@ -329,6 +360,8 @@ export default class SocraticNoteTutorPlugin extends Plugin {
         misconceptions: [],
         messages: [],
       };
+
+      this.tracer?.startSession(slug, note.title, note.content);
 
       view.clearMessages();
       view.setSessionActive(true);
@@ -355,6 +388,9 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       return;
     }
     this.session = loaded;
+    this.llmService.setSessionSlug(slug);
+    this.engine.setSessionSlug(slug);
+    this.tracer?.startSession(slug, loaded.noteTitle, loaded.noteContent);
     view.clearMessages();
     view.setSessionActive(true);
     for (const msg of this.session.messages) {
@@ -410,6 +446,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
 
   private appendUserMessage(type: 'answer' | 'choice-result', content: string): void {
     if (!this.session) return;
+    this.tracer?.userInput(this.session.noteSlug, type, content);
     const msg: TutorMessage = {
       id: generateId(),
       role: 'user',
@@ -432,6 +469,11 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       messages: [],
     };
 
+    const slug = this.session.noteSlug;
+    this.llmService.setSessionSlug(slug);
+    this.engine.setSessionSlug(slug);
+    this.tracer?.startSession(slug, noteTitle, noteContent);
+
     const view = this.getReactView();
     if (!view) return;
 
@@ -445,6 +487,11 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     if (!this.session) return;
     const view = this.getReactView();
     if (!view) return;
+
+    const slug = this.session.noteSlug;
+    this.llmService.setSessionSlug(slug);
+    this.engine.setSessionSlug(slug);
+    this.tracer?.startSession(slug, this.session.noteTitle, this.session.noteContent);
 
     try {
       view.clearMessages();
@@ -639,6 +686,13 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       this.session.messages.push(msg);
       view.addMessage(msg);
 
+      // If the LLM returned guidance/feedback instead of a question, automatically
+      // continue so the conversation never stalls waiting for the user.
+      if (msg.type !== 'question' && !msg.question && recursionDepth < 5) {
+        await this.continueTutoring(recursionDepth + 1);
+        return;
+      }
+
       view.updateProgress(this.session);
       await this.sessionManager.saveSession(this.session.noteSlug, this.session);
     } catch (error) {
@@ -812,9 +866,13 @@ export default class SocraticNoteTutorPlugin extends Plugin {
 
   private countRoundsForConcept(conceptId: string): number {
     if (!this.session) return 0;
-    return this.session.messages.filter(
-      m => m.role === 'tutor' && m.question?.conceptId === conceptId
-    ).length;
+    return this.session.messages.filter(m => {
+      if (m.role !== 'tutor') return false;
+      // Only count questions explicitly tagged with this conceptId.
+      // Diagnosis-phase questions have no conceptId and must NOT count
+      // toward a specific concept's teaching rounds.
+      return m.question?.conceptId === conceptId;
+    }).length;
   }
 
   private errMsg(error: unknown): string {

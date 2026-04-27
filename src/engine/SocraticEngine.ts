@@ -1,8 +1,9 @@
 import { type SessionState, type TutorMessage, type Question, type ConceptState, type SelfAssessmentLevel, type MasteryDimension } from '../types';
 import { LLMService, type LLMResponse } from '../llm/LLMService';
 import { PromptBuilder, assembleBlocks, type SystemPromptContext } from '../llm/PromptBuilder';
-import { type ToolCall, type ToolDefinition, validateToolCalls, getToolDefinitions } from '../llm/tools';
+import { type ToolCall, type ToolDefinition, validateToolCalls, getToolDefinitionsForPhase } from '../llm/tools';
 import { generateId } from '../utils/helpers';
+import type { Tracer } from '../debug/Tracer';
 
 const MAX_CONTEXT_MESSAGES = 15;
 const SUMMARY_THRESHOLD = 12;
@@ -20,7 +21,7 @@ interface ConceptExtractionResponse {
 }
 
 interface LLMStructuredResponse {
-  tool: 'ask_question' | 'provide_guidance' | 'assess_mastery' | 'extract_concepts' | 'send_info';
+  tool: 'provide_guidance' | 'assess_mastery' | 'extract_concepts' | 'send_info';
   type?: 'question' | 'feedback' | 'info' | 'check-complete' | 'concept-extraction';
   questionType: 'multiple-choice' | 'open-ended' | null;
   content: string;
@@ -43,7 +44,7 @@ interface LLMStructuredResponse {
 type EnginePhase =
   | 'diagnosis'
   | 'extract_concepts'
-  | 'ask_question'
+  | 'teaching'
   | 'mastery_check'
   | 'practice_task'
   | 'review'
@@ -59,6 +60,8 @@ export class SocraticEngine {
   private language = 'auto';
   private conversationSummaries = new Map<string, string>();
   private phaseCallback: PhaseCallback | null = null;
+  private tracer: Tracer | null = null;
+  private sessionSlug = 'unknown';
   constructor(llm: LLMService) {
     this.llm = llm;
     this.promptBuilder = new PromptBuilder();
@@ -72,16 +75,26 @@ export class SocraticEngine {
     this.phaseCallback = callback;
   }
 
+  setTracer(tracer: Tracer | null): void {
+    this.tracer = tracer;
+  }
+
+  setSessionSlug(slug: string): void {
+    this.sessionSlug = slug;
+  }
+
   private setPhase(phase: EnginePhase): void {
     this.phaseCallback?.(phase);
   }
 
   private async withPhase<T>(phase: EnginePhase, fn: () => Promise<T>): Promise<T> {
     this.setPhase(phase);
+    this.tracer?.phaseStart(this.sessionSlug, phase ?? 'unknown');
     try {
       return await fn();
     } finally {
       this.setPhase(null);
+      this.tracer?.phaseEnd(this.sessionSlug, phase ?? 'unknown');
     }
   }
 
@@ -94,20 +107,27 @@ export class SocraticEngine {
     if (current?.status === 'mastered' && this.hasRecentMasteryCheck(session, current.id)) {
       return 'practice';
     }
-    if (current && session.messages.filter(m =>
-      m.role === 'tutor' && m.question?.conceptId === current.id
-    ).length >= 3) {
-      return 'mastery-check';
+    if (current) {
+      const rounds = session.messages.filter(m => {
+        if (m.role !== 'tutor') return false;
+        // Only count questions explicitly tagged with this conceptId.
+        // Diagnosis-phase questions have no conceptId and must NOT count
+        // toward a concept's teaching rounds.
+        return m.question?.conceptId === current.id;
+      }).length;
+      if (rounds >= 3 && !this.hasRecentMasteryCheck(session, current.id)) {
+        return 'mastery-check';
+      }
     }
     return 'teaching';
   }
 
-  private hasRecentMasteryCheck(session: SessionState, conceptId: string): boolean {
+  private hasRecentMasteryCheck(session: SessionState, _conceptId: string): boolean {
     const recentMsgs = session.messages.slice(-5);
     return recentMsgs.some(m =>
       m.role === 'tutor'
       && m.type === 'feedback'
-      && m.content.includes(conceptId)
+      && m.content.startsWith('Mastery:')
     );
   }
 
@@ -195,21 +215,21 @@ export class SocraticEngine {
   // --- Step Methods ---
 
   async stepExplainSelection(session: SessionState, selection: string): Promise<TutorMessage> {
+    this.tracer?.engineStep(this.sessionSlug, 'stepExplainSelection', { selectionLength: selection.length });
     return this.withPhase('explain_selection', async () => {
       const systemPrompt = this.buildContextAwareSystemPrompt(session);
       const prompt = this.promptBuilder.buildExplainSelectionPrompt(selection);
       const messages = this.buildConversationContext(session);
 
-      const response = await this.chatWithSelfCorrection(systemPrompt, [
+      const parsed = await this.chatWithEmptyContentHealing(systemPrompt, [
         ...messages,
         { role: 'user', content: prompt },
-      ], 0.7, 2000, getToolDefinitions());
+      ], 0.7, 2000, getToolDefinitionsForPhase('teaching'));
 
-      const parsed = this.parseStructuredResponse(response);
       const tutorMsg = this.buildTutorMessageFromParsed(parsed);
 
       if (!tutorMsg.content?.trim() && !tutorMsg.question) {
-        tutorMsg.content = '请告诉我你对这段内容的初步理解是什么？';
+        tutorMsg.content = '...';
       }
 
       return tutorMsg;
@@ -217,6 +237,7 @@ export class SocraticEngine {
   }
 
   async stepDiagnosis(session: SessionState, round = 1): Promise<TutorMessage> {
+    this.tracer?.engineStep(this.sessionSlug, 'stepDiagnosis', { round });
     return this.withPhase('diagnosis', async () => {
       const systemPrompt = this.buildContextAwareSystemPrompt(session);
       const diagnosisPrompt = round === 1
@@ -224,24 +245,44 @@ export class SocraticEngine {
         : '根据学生上一个回答，追问一个诊断性问题，更好地了解他们的知识水平。关注他们理解不清的地方。';
       const messages = this.buildConversationContext(session);
 
-      const response = await this.chatWithSelfCorrection(systemPrompt, [
+      const parsed = await this.chatWithEmptyContentHealing(systemPrompt, [
         ...messages,
         { role: 'user', content: diagnosisPrompt },
-      ], 0.7, 2000, getToolDefinitions());
+      ], 0.7, 2000, getToolDefinitionsForPhase('diagnosis'));
 
-      const parsed = this.parseStructuredResponse(response);
-      return this.buildTutorMessageFromParsed(parsed);
+      const tutorMsg = this.buildTutorMessageFromParsed(parsed);
+
+      // Guard: in diagnosis phase the model MUST use provide_guidance.
+      // If it returns extract_concepts or another wrong tool, treat it as
+      // malformed and inject a safe default so the user sees a real question.
+      if (parsed.tool !== 'provide_guidance') {
+        tutorMsg.content = '你对这个主题已经有哪些了解？请简单描述一下，我会根据你的回答提出下一个问题。';
+        tutorMsg.type = 'question';
+        tutorMsg.question = {
+          id: generateId(),
+          conceptId: '',
+          type: 'open-ended',
+          prompt: tutorMsg.content,
+        };
+      }
+
+      if (!tutorMsg.content?.trim() && !tutorMsg.question) {
+        tutorMsg.content = '...';
+      }
+
+      return tutorMsg;
     });
   }
 
   async stepExtractConcepts(session: SessionState): Promise<{ concepts: ExtractedConcept[] }> {
+    this.tracer?.engineStep(this.sessionSlug, 'stepExtractConcepts');
     return this.withPhase('extract_concepts', async () => {
       const systemPrompt = this.buildContextAwareSystemPrompt(session);
       const extractionPrompt = this.promptBuilder.buildConceptExtractionPrompt();
 
       const response = await this.chatWithSelfCorrection(systemPrompt, [
         { role: 'user', content: extractionPrompt },
-      ], 0.3, 2000, getToolDefinitions());
+      ], 0.3, 2000, getToolDefinitionsForPhase('extract_concepts'));
 
       const parsed = this.parseStructuredResponse(response);
 
@@ -335,25 +376,29 @@ Requirements:
   }
 
   async stepAskQuestion(session: SessionState): Promise<TutorMessage> {
-    return this.withPhase('ask_question', async () => {
+    this.tracer?.engineStep(this.sessionSlug, 'stepAskQuestion', { currentConceptId: session.currentConceptId });
+    return this.withPhase('teaching', async () => {
       const systemPrompt = this.buildContextAwareSystemPrompt(session);
       const currentConcept = session.concepts.find(c => c.id === session.currentConceptId);
       const prompt = currentConcept
-        ? `你正在教学概念 "${currentConcept.name}"。基于对话历史，提出下一个合适的问题来引导学生学习。记住：永远不要直接给出答案，只能用问题和提示引导。`
-        : 'Continue the tutoring session with appropriate Socratic questions based on the conversation so far.';
+        ? `你正在教学概念 "${currentConcept.name}"（概念ID: ${currentConcept.id}）。基于对话历史，提出下一个合适的教学消息来引导学生学习。记住：永远不要直接给出答案，只能用问题和提示引导。\n\n你必须使用 provide_guidance 工具返回你的教学消息。消息应该包含：如果需要的话简要纠正误解，给出提示或解释，最后以一个引导性问题结束。\n\n重要：请在 conceptId 字段中填写当前概念ID "${currentConcept.id}"，以便系统正确追踪学习进度。`
+        : 'Continue the tutoring session with appropriate Socratic guidance based on the conversation so far.\n\nYou MUST use the provide_guidance tool. Your message should include: a brief correction if needed, hints or explanations, and end with a guiding question.';
 
       const messages = this.buildConversationContext(session);
-      const response = await this.chatWithSelfCorrection(systemPrompt, [
+      const parsed = await this.chatWithEmptyContentHealing(systemPrompt, [
         ...messages,
         { role: 'user', content: prompt },
-      ], 0.7, 2000, getToolDefinitions());
+      ], 0.7, 2000, getToolDefinitionsForPhase('teaching'));
 
-      const parsed = this.parseStructuredResponse(response);
       const tutorMsg = this.buildTutorMessageFromParsed(parsed);
 
-      // Guard: ensure non-empty content with fallback
+      // Inject current conceptId if LLM omitted it, so round-counting works reliably.
+      if (tutorMsg.question && !tutorMsg.question.conceptId && session.currentConceptId) {
+        tutorMsg.question.conceptId = session.currentConceptId;
+      }
+
       if (!tutorMsg.content?.trim() && !tutorMsg.question) {
-        tutorMsg.content = '请继续你的思考，告诉我你对这个问题的理解。';
+        tutorMsg.content = '...';
       }
 
       return tutorMsg;
@@ -361,6 +406,7 @@ Requirements:
   }
 
   async stepMasteryCheck(session: SessionState, conceptId: string): Promise<{ message: TutorMessage; dimensions: MasteryDimension }> {
+    this.tracer?.engineStep(this.sessionSlug, 'stepMasteryCheck', { conceptId });
     return this.withPhase('mastery_check', async () => {
       const systemPrompt = this.buildContextAwareSystemPrompt(session);
       const concept = session.concepts.find(c => c.id === conceptId);
@@ -369,12 +415,11 @@ Requirements:
       const prompt = this.promptBuilder.buildMasteryCheckPrompt(concept.name);
       const messages = this.buildConversationContext(session);
 
-      const response = await this.chatWithSelfCorrection(systemPrompt, [
+      const parsed = await this.chatWithEmptyContentHealing(systemPrompt, [
         ...messages,
         { role: 'user', content: prompt },
-      ], 0.5, 1500, getToolDefinitions());
+      ], 0.5, 1500, getToolDefinitionsForPhase('mastery-check'));
 
-      const parsed = this.parseStructuredResponse(response);
       const message = this.buildTutorMessageFromParsed(parsed);
       const dimensions: MasteryDimension = parsed.masteryCheck || {
         correctness: false,
@@ -388,6 +433,7 @@ Requirements:
   }
 
   async stepPracticeTask(session: SessionState, conceptId: string): Promise<TutorMessage> {
+    this.tracer?.engineStep(this.sessionSlug, 'stepPracticeTask', { conceptId });
     return this.withPhase('practice_task', async () => {
       const systemPrompt = this.buildContextAwareSystemPrompt(session);
       const concept = session.concepts.find(c => c.id === conceptId);
@@ -400,29 +446,40 @@ Requirements:
 
 要求具体且贴合此概念。`;
       const messages = this.buildConversationContext(session);
-      const response = await this.chatWithSelfCorrection(systemPrompt, [
+      const parsed = await this.chatWithEmptyContentHealing(systemPrompt, [
         ...messages,
         { role: 'user', content: prompt },
-      ], 0.7, 2000, getToolDefinitions());
+      ], 0.7, 2000, getToolDefinitionsForPhase('practice'));
 
-      const parsed = this.parseStructuredResponse(response);
-      return this.buildTutorMessageFromParsed(parsed);
+      const tutorMsg = this.buildTutorMessageFromParsed(parsed);
+
+      if (!tutorMsg.content?.trim() && !tutorMsg.question) {
+        tutorMsg.content = '...';
+      }
+
+      return tutorMsg;
     });
   }
 
   async stepReviewQuestion(session: SessionState, concept: ConceptState): Promise<TutorMessage> {
+    this.tracer?.engineStep(this.sessionSlug, 'stepReviewQuestion', { conceptId: concept.id });
     return this.withPhase('review', async () => {
       const systemPrompt = this.buildContextAwareSystemPrompt(session);
       const prompt = `概念 "${concept.name}" 的快速复习问题（上次复习间隔：${this.formatInterval(concept.reviewInterval)}）。只问一个快速问题。如果回答正确，认可并加倍间隔。如果答错，记录挫折。`;
       const messages = this.buildConversationContext(session);
 
-      const response = await this.chatWithSelfCorrection(systemPrompt, [
+      const parsed = await this.chatWithEmptyContentHealing(systemPrompt, [
         ...messages,
         { role: 'user', content: prompt },
-      ], 0.5, 500, getToolDefinitions());
+      ], 0.5, 500, getToolDefinitionsForPhase('teaching'));
 
-      const parsed = this.parseStructuredResponse(response);
-      return this.buildTutorMessageFromParsed(parsed);
+      const tutorMsg = this.buildTutorMessageFromParsed(parsed);
+
+      if (!tutorMsg.content?.trim() && !tutorMsg.question) {
+        tutorMsg.content = '...';
+      }
+
+      return tutorMsg;
     });
   }
 
@@ -471,6 +528,33 @@ Requirements:
     return this.PREAMBLE_PATTERNS.some(p => p.test(trimmed));
   }
 
+  /**
+   * Detect whether the model has echoed system-prompt instructions back to
+   * the user. Some weaker models repeat rules, schema descriptions, or tool
+   * definitions instead of generating their own teaching content.
+   */
+  private containsSystemPromptLeakage(text: string): boolean {
+    if (!text.trim()) return false;
+    const leakagePatterns = [
+      /你是一位苏格拉底式导师/,
+      /Bloom 的 2-Sigma/,
+      /掌握学习法/,
+      /核心规则（绝不能违反）/,
+      /Response Format/i,
+      /JSON Schema/i,
+      /Available Tools/i,
+      /provide_guidance\s*\|/,
+      /assess_mastery\s*\|/,
+      /extract_concepts\s*\|/,
+      /send_info\s*\|/,
+      /Parameters:/,
+      /## 方法论/,
+      /## Current Phase/,
+      /## Learning Progress/,
+    ];
+    return leakagePatterns.some(p => p.test(text));
+  }
+
   private containsValidJson(text: string): boolean {
     if (!text.trim()) return false;
     try {
@@ -510,20 +594,29 @@ Requirements:
       const content = response.content?.trim() || '';
 
       // Valid if: has tool calls, or contains valid JSON, or has non-preamble text
+      // AND does not leak system-prompt instructions.
       const hasToolCall = response.toolCalls && response.toolCalls.length > 0;
       const hasValidJson = this.containsValidJson(content);
       const isPre = !hasToolCall && !hasValidJson && this.isPreamble(content);
       const isEmpty = !hasToolCall && !hasValidJson && !content;
+      const isLeakage = this.containsSystemPromptLeakage(content);
 
-      if (!isPre && !isEmpty) {
+      if (!isPre && !isEmpty && !isLeakage) {
         return response;
       }
 
+      const issue = isLeakage ? 'system-prompt-leakage' : isEmpty ? 'empty-response' : 'preamble-text';
+      this.tracer?.selfCorrection(this.sessionSlug, attempt, issue, content);
+
       if (attempt < MAX_RETRIES) {
         mutableMessages.push({ role: 'assistant', content: content || '(empty response)' });
+        let correction = '你的输出格式不正确。你必须输出一个有效的JSON对象（不要markdown代码块，不要前言）。严格按照system prompt中的JSON Schema格式输出。';
+        if (isLeakage) {
+          correction = '你的回复包含了系统提示中的指令或示例文字。请只输出你自己的教学内容，不要重复系统提示中的任何规则、格式说明或示例。';
+        }
         mutableMessages.push({
           role: 'user',
-          content: '你的输出格式不正确。你必须输出一个有效的JSON对象（不要markdown代码块，不要前言）。严格按照system prompt中的JSON Schema格式输出。',
+          content: correction,
         });
       }
     }
@@ -549,6 +642,67 @@ Requirements:
     throw lastError || new Error('Operation failed after retries');
   }
 
+  /**
+   * An additional healing layer on top of chatWithSelfCorrection.
+   * When the model returns a structurally valid response (valid tool call or
+   * JSON) but with empty or leaked content, we feed the bad output back into
+   * the conversation with a correction prompt and retry.
+   *
+   * Only retries once (on top of chatWithSelfCorrection's own retries) to
+   * keep latency reasonable.
+   */
+  private async chatWithEmptyContentHealing(
+    systemPrompt: string,
+    baseMessages: Array<{ role: 'user' | 'assistant'; content: string }>,
+    temperature: number,
+    maxTokens: number,
+    tools?: ToolDefinition[],
+    jsonMode = true,
+  ): Promise<LLMStructuredResponse> {
+    let response = await this.chatWithSelfCorrection(systemPrompt, baseMessages, temperature, maxTokens, tools, jsonMode);
+    let parsed = this.parseStructuredResponse(response);
+
+    // One extra healing attempt (chatWithSelfCorrection already retried 2×).
+    for (let attempt = 0; attempt < 1; attempt++) {
+      const isExtractEmpty = parsed.tool === 'extract_concepts' && (!parsed.concepts || parsed.concepts.length === 0);
+      const isContentEmpty = parsed.tool !== 'extract_concepts' && !parsed.content?.trim();
+      const isLeakage = this.containsSystemPromptLeakage(parsed.content || '');
+
+      if (!isExtractEmpty && !isContentEmpty && !isLeakage) {
+        return parsed;
+      }
+
+      let correction = '';
+      const reason = isLeakage ? 'system-prompt-leakage' : isContentEmpty ? 'empty-content' : 'empty-concepts';
+      if (isLeakage) {
+        correction = '你的回复包含了系统提示中的指令或示例文字。请只输出你自己的教学内容，不要重复系统提示中的任何规则、格式说明或示例。';
+      } else if (isContentEmpty) {
+        correction = '你的 content 字段为空。请重新生成完整、有意义的回复，确保 content 包含实际的问题或指导文本。';
+      } else if (isExtractEmpty) {
+        correction = '你没有返回任何概念。请从笔记内容中提取 5-15 个原子概念，并填充 concepts 数组。';
+      }
+
+      this.tracer?.healingAttempt(this.sessionSlug, reason, correction);
+
+      const correctionMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [
+        ...baseMessages,
+        { role: 'assistant', content: response.content || JSON.stringify(parsed) },
+        { role: 'user', content: correction },
+      ];
+
+      response = await this.chatWithSelfCorrection(systemPrompt, correctionMessages, temperature, maxTokens, tools, jsonMode);
+      parsed = this.parseStructuredResponse(response);
+    }
+
+    // Final guard: if the model still returned empty content after healing,
+    // inject a safe default so the UI never shows "...".
+    if (parsed.tool !== 'extract_concepts' && !parsed.content?.trim()) {
+      parsed.content = '请简单描述一下你对这个主题的了解，我会根据你的回答提出下一个问题。';
+    }
+
+    return parsed;
+  }
+
   // --- Parsing ---
 
   private parseStructuredResponse(response: { content: string; toolCalls?: ToolCall[] }): LLMStructuredResponse {
@@ -558,9 +712,14 @@ Requirements:
       if (validated.valid.length > 0) {
         const first = validated.valid[0]!;
         const parsed = this.buildResponseFromValidatedTool(first.name, first.args);
-        // Only fall back to raw content when the tool didn't supply its own content.
-        // Empty string is valid for extract_concepts, so don't overwrite it.
-        if (parsed.content == null && response.content?.trim()) {
+        // When the tool call left content empty but the message body has text,
+        // borrow it.  For extract_concepts an empty content is valid (the payload
+        // is in the concepts array), so skip that tool.
+        if (
+          parsed.tool !== 'extract_concepts' &&
+          !parsed.content?.trim() &&
+          response.content?.trim()
+        ) {
           parsed.content = response.content.trim();
         }
         return parsed;
@@ -574,7 +733,11 @@ Requirements:
       try {
         const args = JSON.parse(firstCall.function.arguments) as Record<string, unknown>;
         const parsed = this.buildResponseFromValidatedTool(firstCall.function.name, args);
-        if (parsed.content == null && response.content?.trim()) {
+        if (
+          parsed.tool !== 'extract_concepts' &&
+          !parsed.content?.trim() &&
+          response.content?.trim()
+        ) {
           parsed.content = response.content.trim();
         }
         return parsed;
@@ -605,7 +768,7 @@ Requirements:
 
     // Path 3: Fallback
     const content = response.content?.trim();
-    return {
+    const fallbackResult: LLMStructuredResponse = {
       tool: 'send_info',
       content: content || '请继续思考并分享你的理解。',
       questionType: null,
@@ -615,6 +778,8 @@ Requirements:
       masteryCheck: null,
       misconceptionDetected: null,
     };
+    this.tracer?.parsedResult(this.sessionSlug, { ...fallbackResult, _source: 'fallback' });
+    return fallbackResult;
   }
 
   private buildResponseFromValidatedTool(
@@ -633,7 +798,7 @@ Requirements:
     };
 
     switch (toolName) {
-      case 'ask_question': {
+      case 'provide_guidance': {
         const a = args as Record<string, unknown>;
         return {
           ...base,
@@ -646,14 +811,6 @@ Requirements:
                 : null,
           options: Array.isArray(a.options) ? a.options.map(String) : null,
           correctOptionIndex: typeof a.correctOptionIndex === 'number' ? a.correctOptionIndex : null,
-          conceptId: typeof a.conceptId === 'string' ? a.conceptId : null,
-        };
-      }
-      case 'provide_guidance': {
-        const a = args as Record<string, unknown>;
-        return {
-          ...base,
-          content: String(a.content ?? ''),
           conceptId: typeof a.conceptId === 'string' ? a.conceptId : null,
           misconceptionDetected: typeof a.misconception === 'string'
             ? { misconception: a.misconception, rootCause: typeof a.rootCause === 'string' ? a.rootCause : '' }
@@ -695,9 +852,10 @@ Requirements:
   }
 
   private buildTutorMessageFromParsed(parsed: LLMStructuredResponse): TutorMessage {
+    this.tracer?.parsedResult(this.sessionSlug, { ...parsed, _source: 'buildTutorMessage' });
     const questionType = parsed.questionType || null;
     const content = parsed.content || '';
-    const question: Question | undefined = questionType && parsed.options
+    const question: Question | undefined = questionType
       ? {
           id: generateId(),
           conceptId: parsed.conceptId || '',
@@ -721,8 +879,9 @@ Requirements:
   }
 
   private inferMessageType(parsed: LLMStructuredResponse): TutorMessage['type'] {
-    if (parsed.tool === 'ask_question') return 'question';
-    if (parsed.tool === 'provide_guidance') return 'feedback';
+    if (parsed.tool === 'provide_guidance') {
+      return parsed.questionType ? 'question' : 'feedback';
+    }
     if (parsed.tool === 'assess_mastery') return 'feedback';
     if (parsed.tool === 'extract_concepts') return 'info';
     if (parsed.tool === 'send_info') return 'info';

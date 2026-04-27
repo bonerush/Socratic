@@ -1,6 +1,7 @@
 import { requestUrl } from 'obsidian';
 import type { SocraticPluginSettings } from '../types';
 import type { ToolDefinition, ToolCall } from './tools';
+import type { Tracer } from '../debug/Tracer';
 
 interface LLMMessage {
   role: 'system' | 'user' | 'assistant';
@@ -21,6 +22,8 @@ export interface LLMResponse {
 
 export class LLMService {
   private settings: SocraticPluginSettings;
+  private tracer: Tracer | null = null;
+  private sessionSlug = 'unknown';
 
   constructor(settings: SocraticPluginSettings) {
     this.settings = settings;
@@ -28,6 +31,14 @@ export class LLMService {
 
   updateSettings(settings: SocraticPluginSettings): void {
     this.settings = settings;
+  }
+
+  setTracer(tracer: Tracer | null): void {
+    this.tracer = tracer;
+  }
+
+  setSessionSlug(slug: string): void {
+    this.sessionSlug = slug;
   }
 
   /**
@@ -62,8 +73,12 @@ export class LLMService {
       body['tool_choice'] = 'auto';
     }
 
-    // Force JSON output when jsonMode is enabled (OpenAI-compatible APIs)
-    if (jsonMode) {
+    // Force JSON output when jsonMode is enabled (OpenAI-compatible APIs).
+    // IMPORTANT: Do NOT combine jsonMode with tool calling. OpenAI and most
+    // compatible providers reject or mishandle response_format + tools together.
+    // Tool arguments are already JSON, so jsonMode is redundant and can cause
+    // the model to return empty content with no tool calls.
+    if (jsonMode && !tools) {
       body['response_format'] = { type: 'json_object' };
     }
 
@@ -74,6 +89,16 @@ export class LLMService {
     if (this.isOpenAICompatible()) {
       headers['Authorization'] = `Bearer ${this.settings.apiKey}`;
     }
+
+    this.tracer?.llmRequest(
+      this.sessionSlug,
+      systemPrompt,
+      messages,
+      temperature,
+      maxTokens,
+      tools,
+      jsonMode,
+    );
 
     try {
       const response = await requestUrl({
@@ -89,7 +114,7 @@ export class LLMService {
 
       // Handle tool_calls response (OpenAI function calling)
       if (choice.message?.tool_calls && choice.message.tool_calls.length > 0) {
-        return {
+        const result: LLMResponse = {
           content: choice.message.content || '',
           toolCalls: choice.message.tool_calls.map((tc: {
             id: string;
@@ -112,10 +137,12 @@ export class LLMService {
               }
             : undefined,
         };
+        this.tracer?.llmResponse(this.sessionSlug, result);
+        return result;
       }
 
       // Standard content response
-      return {
+      const result: LLMResponse = {
         content: choice.message.content || '',
         finishReason: choice.finish_reason || 'stop',
         usage: data.usage
@@ -126,9 +153,12 @@ export class LLMService {
             }
           : undefined,
       };
+      this.tracer?.llmResponse(this.sessionSlug, result);
+      return result;
     } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      throw new Error(`LLM API request failed: ${msg}`);
+      const err = error instanceof Error ? error : new Error(String(error));
+      this.tracer?.llmError(this.sessionSlug, err);
+      throw new Error(`LLM API request failed: ${err.message}`);
     }
   }
 

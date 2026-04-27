@@ -4,7 +4,7 @@ import { useSocratic } from '../SocraticContext';
 const PHASE_KEY_MAP: Record<string, string> = {
   diagnosis: 'phaseDiagnosis',
   extract_concepts: 'phaseExtractConcepts',
-  ask_question: 'phaseAskQuestion',
+  teaching: 'phaseTeaching',
   mastery_check: 'phaseMasteryCheck',
   practice_task: 'phasePracticeTask',
   review: 'phaseReview',
@@ -14,7 +14,7 @@ const PHASE_KEY_MAP: Record<string, string> = {
 /**
  * Typing indicator with a rotating spinner and context-aware phase label.
  *
- * When the engine reports its current phase (e.g. "diagnosis", "ask_question"),
+ * When the engine reports its current phase (e.g. "diagnosis", "teaching"),
  * a translated human-readable label is shown beneath the spinner.
  */
 export function TypingIndicator(): React.ReactElement {

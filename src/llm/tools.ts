@@ -36,17 +36,18 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'ask_question',
+      name: 'provide_guidance',
       description:
-        'Ask the student a Socratic question. For multiple-choice, provide 2-5 options and the correct index. For open-ended, leave options empty.',
+        'Provide teaching guidance to the student. Your message should: (a) briefly correct any misconceptions if needed, (b) give hints or explanations to guide thinking, (c) end with a Socratic question. Never give the answer directly. For multiple-choice questions, provide 2-5 options and the correct index. For open-ended questions, leave options empty.',
       parameters: {
         type: 'object',
         properties: {
-          content: { type: 'string', description: 'The question text.' },
+          content: { type: 'string', description: 'The guidance text or question text.' },
+          conceptId: { type: 'string', description: 'ID of the concept this guidance targets.' },
           questionType: {
             type: 'string',
             enum: ['multiple-choice', 'open-ended'],
-            description: 'Type of question.',
+            description: 'Type of question included in the guidance.',
           },
           options: {
             type: 'array',
@@ -57,26 +58,6 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
             type: 'number',
             description: 'Zero-based index of the correct option.',
           },
-          conceptId: {
-            type: 'string',
-            description: 'ID of the concept this question targets.',
-          },
-        },
-        required: ['content'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'provide_guidance',
-      description:
-        'Provide guidance, hints, feedback, or a counter-example to help the student discover the answer. Never give the answer directly.',
-      parameters: {
-        type: 'object',
-        properties: {
-          content: { type: 'string', description: 'The guidance text.' },
-          conceptId: { type: 'string', description: 'ID of the concept this guidance targets.' },
           misconception: {
             type: 'string',
             description: 'If a misconception was detected, describe it.',
@@ -179,8 +160,27 @@ export function getToolDefinitions(): ToolDefinition[] {
   return TOOL_DEFINITIONS;
 }
 
-export function getToolDescriptions(): string {
-  return TOOL_DEFINITIONS
+export function getToolDefinitionsForPhase(phase: string): ToolDefinition[] {
+  switch (phase) {
+    case 'diagnosis':
+    case 'teaching':
+    case 'practice':
+    case 'review':
+      return TOOL_DEFINITIONS.filter((d) => d.function.name === 'provide_guidance');
+    case 'mastery-check':
+      return TOOL_DEFINITIONS.filter((d) => d.function.name === 'assess_mastery');
+    case 'extract_concepts':
+      return TOOL_DEFINITIONS.filter((d) => d.function.name === 'extract_concepts');
+    case 'finalize':
+      return TOOL_DEFINITIONS.filter((d) => d.function.name === 'send_info');
+    default:
+      return TOOL_DEFINITIONS;
+  }
+}
+
+export function getToolDescriptions(phase?: string): string {
+  const defs = phase ? getToolDefinitionsForPhase(phase) : TOOL_DEFINITIONS;
+  return defs
     .map((def) => {
       const fn = def.function;
       const params = fn.parameters.properties as Record<string, { description?: string; enum?: string[] }>;

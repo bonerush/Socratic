@@ -133,6 +133,10 @@ export interface SocraticPluginSettings {
   disableToolCalling: boolean;
   /** Path to memory files (defaults to sessionStoragePath/.memories). */
   memoryStoragePath: string;
+  /** Enable debug tracing of LLM calls and engine steps. */
+  debugMode: boolean;
+  /** Path to debug trace files (defaults to sessionStoragePath/debug). */
+  debugStoragePath: string;
 }
 
 export const DEFAULT_SETTINGS: SocraticPluginSettings = {
@@ -147,4 +151,6 @@ export const DEFAULT_SETTINGS: SocraticPluginSettings = {
   reviewIntervalMax: 2764800,
   disableToolCalling: false,
   memoryStoragePath: '',
+  debugMode: false,
+  debugStoragePath: '',
 };

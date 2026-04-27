@@ -52,7 +52,7 @@ export interface TranslationMap {
   // Processing phases shown in TypingIndicator
   phaseDiagnosis: string;
   phaseExtractConcepts: string;
-  phaseAskQuestion: string;
+  phaseTeaching: string;
   phaseMasteryCheck: string;
   phasePracticeTask: string;
   phaseReview: string;
@@ -92,7 +92,7 @@ export interface TranslationMap {
 }
 
 const en: TranslationMap = {
-  viewTitle: 'Socratic Tutor',
+  viewTitle: 'Socratic',
   viewStatusReady: 'Ready',
   noActiveSession: 'No active session',
   startTutoring: 'Start Tutoring',
@@ -142,7 +142,7 @@ const en: TranslationMap = {
   conceptTransition: 'Identified key concepts. Beginning guided learning.',
   phaseDiagnosis: 'Diagnosing',
   phaseExtractConcepts: 'Building concept map',
-  phaseAskQuestion: 'Crafting question',
+  phaseTeaching: 'Teaching',
   phaseMasteryCheck: 'Checking mastery',
   phasePracticeTask: 'Designing practice',
   phaseReview: 'Preparing review',
@@ -178,7 +178,7 @@ const en: TranslationMap = {
 };
 
 const zh: TranslationMap = {
-  viewTitle: '苏格拉底笔记导师',
+  viewTitle: 'Socratic',
   viewStatusReady: '就绪',
   noActiveSession: '无活跃会话',
   startTutoring: '开始辅导',
@@ -228,7 +228,7 @@ const zh: TranslationMap = {
   conceptTransition: '已识别关键概念，开始引导式学习。',
   phaseDiagnosis: '诊断中',
   phaseExtractConcepts: '构建概念图谱中',
-  phaseAskQuestion: '生成问题中',
+  phaseTeaching: '教学中',
   phaseMasteryCheck: '评估掌握度中',
   phasePracticeTask: '设计练习任务中',
   phaseReview: '生成复习问题中',
