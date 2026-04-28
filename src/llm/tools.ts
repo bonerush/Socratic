@@ -168,6 +168,8 @@ export function getToolDefinitionsForPhase(phase: string): ToolDefinition[] {
     case 'review':
       return TOOL_DEFINITIONS.filter((d) => d.function.name === 'provide_guidance');
     case 'mastery-check':
+      return TOOL_DEFINITIONS.filter((d) => d.function.name === 'provide_guidance');
+    case 'mastery-assess':
       return TOOL_DEFINITIONS.filter((d) => d.function.name === 'assess_mastery');
     case 'extract_concepts':
       return TOOL_DEFINITIONS.filter((d) => d.function.name === 'extract_concepts');

@@ -9,6 +9,7 @@ import {
   buildDiagnosisPrompt as buildDiagnosisPromptText,
   buildConceptExtractionPrompt as buildConceptExtractionPromptText,
   buildMasteryCheckPrompt as buildMasteryCheckPromptText,
+  buildMasteryAssessPrompt as buildMasteryAssessPromptText,
   buildExplainSelectionPrompt as buildExplainSelectionPromptText,
   buildConversationSummaryPrompt as buildConversationSummaryPromptText,
 } from '../prompts/content';
@@ -167,8 +168,12 @@ export class PromptBuilder {
     return buildConceptExtractionPromptText();
   }
 
-  buildMasteryCheckPrompt(conceptName: string): string {
-    return buildMasteryCheckPromptText(conceptName);
+  buildMasteryCheckPrompt(conceptName: string, conceptId: string): string {
+    return buildMasteryCheckPromptText(conceptName, conceptId);
+  }
+
+  buildMasteryAssessPrompt(conceptName: string): string {
+    return buildMasteryAssessPromptText(conceptName);
   }
 
   buildExplainSelectionPrompt(selection: string): string {

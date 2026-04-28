@@ -223,6 +223,33 @@ export class SessionDebugger {
   }
 
   /**
+   * Compute a 0-100 health score for the session.
+   * Higher is better. Deducts for unresolved issues, low mastery,
+   * and structural imbalances.
+   */
+  computeHealthScore(state: SessionState): number {
+    const stats = this.computeStats(state);
+    let score = 100;
+
+    score -= stats.misconceptionsUnresolved * 5;
+    if (stats.avgMasteryScore < 50) score -= 10;
+
+    const msgRatio = stats.userMessages / Math.max(1, stats.tutorMessages);
+    if (msgRatio < 0.5) score -= 10;
+    if (msgRatio > 2.0) score -= 5;
+
+    if (stats.conceptsTotal === 0 && stats.totalMessages > 5) score -= 15;
+    if (stats.conceptsPending === stats.conceptsTotal && stats.teachingRounds > 0) score -= 5;
+
+    const emptyMsgs = state.messages.filter(
+      (m) => m.role === 'tutor' && (!m.content.trim() || m.content.trim() === '...')
+    ).length;
+    score -= emptyMsgs * 5;
+
+    return Math.max(0, Math.min(100, score));
+  }
+
+  /**
    * Format a diagnostic report as human-readable markdown.
    */
   formatReport(diag: SessionDiagnostic): string {

@@ -1,22 +1,25 @@
 import { type Vault, normalizePath } from 'obsidian';
 import { SESSION_DIR, type SessionState, type LearnerProfile, type SessionSummary, emptyMemoryCollection } from '../types';
-import { slugify } from '../utils/helpers';
+import { slugify } from '../utils/common';
 import { ensureDir } from '../utils/vault';
 import { extractJsonFromMarkdown } from '../utils/json';
 import { MemoryManager } from '../memory/MemoryManager';
 import { MemoryExtractor } from '../memory/MemoryExtractor';
+import { SessionExporter } from './SessionExporter';
 
 export class SessionManager {
   private vault: Vault;
   private basePath: string;
   memoryManager: MemoryManager;
   memoryExtractor: MemoryExtractor;
+  private exporter: SessionExporter;
 
   constructor(vault: Vault, customBasePath?: string) {
     this.vault = vault;
     this.basePath = customBasePath || SESSION_DIR;
     this.memoryManager = new MemoryManager(vault, this.basePath);
     this.memoryExtractor = new MemoryExtractor();
+    this.exporter = new SessionExporter(vault);
   }
 
   getSessionDir(noteSlug: string): string {
@@ -59,7 +62,7 @@ export class SessionManager {
     await ensureDir(this.vault, dir);
     state.updatedAt = Date.now();
     await this.vault.adapter.write(`${dir}/session.json`, JSON.stringify(state, null, 2));
-    await this.writeSessionMarkdown(dir, state);
+    await this.exporter.exportSessionMarkdown(dir, state);
   }
 
   async archiveSession(noteSlug: string): Promise<void> {
@@ -333,37 +336,4 @@ export class SessionManager {
     };
   }
 
-  private async writeSessionMarkdown(dir: string, state: SessionState): Promise<void> {
-    let md = `# Socratic Session: ${state.noteTitle}\n\n`;
-    md += `- **Started**: ${new Date(state.createdAt).toISOString()}\n`;
-    md += `- **Last updated**: ${new Date(state.updatedAt).toISOString()}\n`;
-    md += `- **Status**: ${state.completed ? 'Completed' : 'In Progress'}\n\n`;
-
-    md += `## Concept Progress\n\n`;
-    md += `| Concept | Status | Mastery | Last Review |\n`;
-    md += `|---------|--------|---------|-------------|\n`;
-    for (const concept of state.concepts) {
-      const timeStr = concept.lastReviewTime
-        ? new Date(concept.lastReviewTime).toLocaleDateString()
-        : '-';
-      md += `| ${concept.name} | ${concept.status} | ${concept.masteryScore}% | ${timeStr} |\n`;
-    }
-
-    if (state.misconceptions.length > 0) {
-      md += `\n## Misconceptions\n\n`;
-      md += `| Misconception | Root Cause | Resolved |\n`;
-      md += `|--------------|------------|----------|\n`;
-      for (const m of state.misconceptions) {
-        md += `| ${m.misconception} | ${m.inferredRootCause} | ${m.resolved ? 'Yes' : 'No'} |\n`;
-      }
-    }
-
-    md += `\n## Conversation Log\n\n`;
-    for (const msg of state.messages) {
-      const prefix = msg.role === 'tutor' ? '**Tutor**:' : '**You**:';
-      md += `> ${prefix} ${msg.content}\n\n`;
-    }
-
-    await this.vault.adapter.write(`${dir}/session.md`, md);
-  }
 }

@@ -45,6 +45,7 @@ export interface Question {
   options?: string[];
   correctOptionIndex?: number;
   isReviewQuestion?: boolean;
+  isMasteryCheck?: boolean;
 }
 
 export interface TutorMessage {

@@ -1,7 +1,7 @@
 import { type Vault, normalizePath } from 'obsidian';
 import type { Memory } from '../types';
 import { ensureDir } from '../utils/vault';
-import { sanitizeFilename } from '../utils/text';
+import { sanitizeFilename } from '../utils/common';
 
 /**
  * Persists session memories as Markdown files under the configured

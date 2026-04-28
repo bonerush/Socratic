@@ -1,7 +1,7 @@
 import { type TutorMessage, type Question } from '../types';
 import { type ToolCall, validateToolCalls } from '../llm/tools';
 import { tryParseJson, extractBalancedJsonObjects } from '../utils/json';
-import { generateId } from '../utils/helpers';
+import { generateId } from '../utils/common';
 import type { Tracer } from '../debug/Tracer';
 
 export interface ExtractedConcept {
@@ -45,18 +45,7 @@ export class ResponseParser {
       const validated = validateToolCalls(response.toolCalls);
       if (validated.valid.length > 0) {
         const first = validated.valid[0]!;
-        const parsed = this.buildResponseFromValidatedTool(first.name, first.args);
-        // When the tool call left content empty but the message body has text,
-        // borrow it.  For extract_concepts an empty content is valid (the payload
-        // is in the concepts array), so skip that tool.
-        if (
-          parsed.tool !== 'extract_concepts' &&
-          !parsed.content?.trim() &&
-          response.content?.trim()
-        ) {
-          parsed.content = response.content.trim();
-        }
-        return parsed;
+        return this.buildToolResponseWithFallback(first.name, first.args, response.content);
       }
 
       // Path 1b: lenient fallback — if validation failed, still try to parse
@@ -66,15 +55,7 @@ export class ResponseParser {
       const firstCall = response.toolCalls[0]!;
       try {
         const args = JSON.parse(firstCall.function.arguments) as Record<string, unknown>;
-        const parsed = this.buildResponseFromValidatedTool(firstCall.function.name, args);
-        if (
-          parsed.tool !== 'extract_concepts' &&
-          !parsed.content?.trim() &&
-          response.content?.trim()
-        ) {
-          parsed.content = response.content.trim();
-        }
-        return parsed;
+        return this.buildToolResponseWithFallback(firstCall.function.name, args, response.content);
       } catch {
         // Fall through to JSON fallback
       }
@@ -114,6 +95,25 @@ export class ResponseParser {
     };
     this.tracer?.parsedResult('unknown', { ...fallbackResult, _source: 'fallback' });
     return fallbackResult;
+  }
+
+  private buildToolResponseWithFallback(
+    toolName: string,
+    args: Record<string, unknown>,
+    rawContent?: string,
+  ): LLMStructuredResponse {
+    const parsed = this.buildResponseFromValidatedTool(toolName, args);
+    // When the tool call left content empty but the message body has text,
+    // borrow it. For extract_concepts an empty content is valid (the payload
+    // is in the concepts array), so skip that tool.
+    if (
+      parsed.tool !== 'extract_concepts' &&
+      !parsed.content?.trim() &&
+      rawContent?.trim()
+    ) {
+      parsed.content = rawContent.trim();
+    }
+    return parsed;
   }
 
   buildResponseFromValidatedTool(

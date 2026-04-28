@@ -4,6 +4,8 @@ export interface TraceAnalysis {
   sessionSlug: string;
   eventCount: number;
   llmCallCount: number;
+  toolCallCount: number;
+  toolCallSuccessRate: number;
   totalPromptTokens: number;
   totalCompletionTokens: number;
   selfCorrectionCount: number;
@@ -63,6 +65,13 @@ export class TraceAnalyzer {
     const healingAttemptCount = events.filter((e) => e.type === 'healing-attempt').length;
     const llmCallCount = llmCalls.length;
 
+    // Tool call success: count tool-call events vs llm-requests that expected tools
+    const toolCallEvents = events.filter((e) => e.type === 'tool-call');
+    const toolCallCount = toolCallEvents.length;
+    // A rough proxy: if there were tool calls and LLM requests with tools, count success
+    const toolRequests = llmCalls.filter((e) => (e.data.toolCount as number ?? 0) > 0);
+    const toolCallSuccessRate = toolRequests.length > 0 ? toolCallCount / toolRequests.length : 0;
+
     // 1. Average LLM response time (O(n) two-pointer scan)
     let totalResponseTime = 0;
     let responseTimeCount = 0;
@@ -106,6 +115,8 @@ export class TraceAnalyzer {
       sessionSlug,
       eventCount: events.length,
       llmCallCount,
+      toolCallCount,
+      toolCallSuccessRate,
       totalPromptTokens,
       totalCompletionTokens,
       selfCorrectionCount,
@@ -142,6 +153,9 @@ export class TraceAnalyzer {
     lines.push(`- Error rate: ${(analysis.errorRate * 100).toFixed(1)}%`);
     lines.push(`- Self-correction rate: ${(analysis.selfCorrectionRate * 100).toFixed(1)}%`);
     lines.push(`- Healing rate: ${(analysis.healingRate * 100).toFixed(1)}%`);
+    if (analysis.toolCallCount > 0) {
+      lines.push(`- Tool call success rate: ${(analysis.toolCallSuccessRate * 100).toFixed(1)}% (${analysis.toolCallCount} calls)`);
+    }
     lines.push('');
 
     if (analysis.totalPromptTokens > 0 || analysis.totalCompletionTokens > 0) {

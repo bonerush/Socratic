@@ -1,6 +1,6 @@
 import { LLMService, type LLMResponse } from '../llm/LLMService';
 import { type ToolDefinition } from '../llm/tools';
-import { withRetry } from '../utils/async';
+import { withRetry } from '../utils/common';
 import { containsValidJson } from '../utils/json';
 import type { Tracer } from '../debug/Tracer';
 import type { LLMStructuredResponse } from './ResponseParser';

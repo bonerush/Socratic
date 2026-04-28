@@ -1,5 +1,5 @@
 import type { SessionState } from './types';
-import { escapeHtml } from './utils/html';
+import { escapeHtml } from './utils/common';
 
 function statusLabel(status: string): string {
   return status === 'mastered' ? '✓ Mastered'

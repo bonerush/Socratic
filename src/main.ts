@@ -5,19 +5,16 @@ import { SessionManager } from './session/SessionManager';
 import { LLMService } from './llm/LLMService';
 import { SocraticEngine } from './engine/SocraticEngine';
 import {
-  VIEW_TYPE_SOCRATIC, DEFAULT_SETTINGS, emptyMemoryCollection,
-  type SessionState, type ConceptState,
-  type SelfAssessmentLevel, type MasteryDimension, type TutorMessage, type SocraticPluginSettings,
-  type SessionSummary,
+  VIEW_TYPE_SOCRATIC, DEFAULT_SETTINGS,
+  type SessionState, type SelfAssessmentLevel, type SessionSummary,
 } from './types';
-import { generateId, slugify } from './utils/helpers';
-import { getErrorMessage } from './utils/error';
 import { getTranslations, resolveLang, type Lang } from './i18n/translations';
-import { generateRoadmapHtml, generateSummaryHtml } from './templates';
 import { Tracer } from './debug/Tracer';
+import { TutoringFlow } from './core/TutoringFlow';
+import { slugify } from './utils/common';
 
 export default class SocraticNoteTutorPlugin extends Plugin {
-  settings: SocraticPluginSettings;
+  settings = DEFAULT_SETTINGS;
   private sessionManager!: SessionManager;
   private llmService!: LLMService;
   private engine!: SocraticEngine;
@@ -25,6 +22,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
   private session: SessionState | null = null;
   private currentLang: Lang = 'zh';
   private t = getTranslations('zh');
+  private tutoringFlow!: TutoringFlow;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -37,6 +35,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     });
 
     this.initTracer();
+    this.initTutoringFlow();
 
     this.registerView(VIEW_TYPE_SOCRATIC, (leaf) => new ReactSocraticView(leaf, this));
 
@@ -131,6 +130,27 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     this.engine?.setTracer(this.tracer);
   }
 
+  private initTutoringFlow(): void {
+    this.tutoringFlow = new TutoringFlow({
+      settings: this.settings,
+      sessionManager: this.sessionManager,
+      llmService: this.llmService,
+      engine: this.engine,
+      tracer: this.tracer,
+      vault: this.app.vault,
+      getSession: () => this.session,
+      setSession: (s) => { this.session = s; },
+      getReactView: () => this.getReactView(),
+      getTranslations: () => this.t,
+      getCurrentLang: () => this.currentLang,
+      updateViewLanguage: (lang) => this.updateViewLanguage(lang),
+      showSelfAssessment: () => this.showSelfAssessment(),
+      showSessionResume: () => this.showSessionResume(),
+      exitToMainScreen: () => this.exitToMainScreen(),
+      getActiveNote: () => this.getActiveNote(),
+    });
+  }
+
   updateDebugMode(): void {
     this.tracer?.setEnabled(this.settings.debugMode);
   }
@@ -168,14 +188,6 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     }
   }
 
-  private updateLanguageFromText(text: string): void {
-    if (this.settings.language !== 'auto') return;
-    const detected = resolveLang('auto', text);
-    if (detected !== this.currentLang) {
-      this.updateViewLanguage(detected);
-    }
-  }
-
   /** Expose session for React context bridge */
   getSession(): SessionState | null {
     return this.session;
@@ -195,7 +207,6 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     }
     const view = this.getReactView();
     if (view) {
-      // Resolve any open dialogs with cancel/defaults before resetting UI
       const state = view.getViewState();
       if (state.selfAssessment) {
         view.resolveSelfAssessment('okay');
@@ -229,11 +240,9 @@ export default class SocraticNoteTutorPlugin extends Plugin {
 
     const state = reactView.getViewState();
 
-    // If noteSwitchResume dialog is open, cancel it and continue processing the new note
     if (state.noteSwitchResume) {
       reactView.resolveNoteSwitchResume('cancel');
     } else if (state.selfAssessment || state.sessionResume) {
-      // Do not interrupt other dialogs
       return;
     }
 
@@ -247,7 +256,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       const loaded = await this.sessionManager.loadSession(slug);
       if (loaded) {
         this.session = loaded;
-        await this.resumeSession();
+        await this.tutoringFlow.resumeSession();
       }
     } else if (choice === 'restart') {
       await this.sessionManager.deleteSession(slug);
@@ -282,35 +291,6 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     return content.trim() ? { title, content } : null;
   }
 
-  async startTutoring(): Promise<void> {
-    const prepared = await this.prepareTutoring();
-    if (!prepared) return;
-    const { view, note, slug } = prepared;
-
-    try {
-      const exists = await this.sessionManager.sessionExists(slug);
-
-      if (exists) {
-        const choice = await view.showSessionResume();
-        if (choice === 'resume') {
-          const loaded = await this.sessionManager.loadSession(slug);
-          if (loaded) {
-            this.session = loaded;
-            await this.resumeSession();
-            return;
-          }
-        } else {
-          await this.sessionManager.archiveSession(slug);
-          await this.sessionManager.deleteSession(slug);
-        }
-      }
-
-      await this.startNewSessionWithNote(note.title, note.content);
-    } catch (error) {
-      view.showError(`${this.t.startFailed}: ${getErrorMessage(error)}`);
-    }
-  }
-
   async startNewSession(): Promise<void> {
     this.session = null;
     const view = this.getReactView();
@@ -321,556 +301,37 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     }
   }
 
+  // ── Delegated to TutoringFlow ──────────────────────────────────────────────
+
+  async startTutoring(): Promise<void> {
+    return this.tutoringFlow.startTutoring();
+  }
+
   async startTutoringWithSelection(selection: string): Promise<void> {
-    const prepared = await this.prepareTutoring();
-    if (!prepared) return;
-    const { view, note, slug } = prepared;
-
-    try {
-      this.llmService.setSessionSlug(slug);
-      this.engine.setSessionSlug(slug);
-      const base = this.sessionManager.createNewSession(note.title, note.content);
-      this.session = {
-        ...base,
-        currentConceptId: null,
-        concepts: [],
-        conceptOrder: [],
-        misconceptions: [],
-        messages: [],
-      };
-
-      this.tracer?.startSession(slug, note.title, note.content);
-
-      view.clearMessages();
-      view.setSessionActive(true);
-
-      const msg = await this.engine.stepExplainSelection(this.session, selection);
-      this.session.messages.push(msg);
-      view.addMessage(msg);
-      await this.sessionManager.saveSession(this.session.noteSlug, this.session);
-    } catch (error) {
-      view.showError(`${this.t.startFailed}: ${getErrorMessage(error)}`);
-    }
-  }
-
-  async listSessionHistory(): Promise<SessionSummary[]> {
-    return this.sessionManager.listSessions();
-  }
-
-  async loadSessionFromHistory(slug: string, sessionId?: string): Promise<void> {
-    const view = this.getReactView();
-    if (!view) return;
-    const loaded = await this.sessionManager.loadSession(slug, sessionId);
-    if (!loaded) {
-      view.showError(this.t.sessionNotFound || 'Session not found');
-      return;
-    }
-    this.session = loaded;
-    await this.restoreSessionView(loaded, view);
-    view.updateProgress(this.session);
-  }
-
-  async deleteSessionFromHistory(slug: string, sessionId?: string): Promise<void> {
-    await this.sessionManager.deleteSession(slug, sessionId);
-    if (this.session?.noteSlug === slug && (!sessionId || sessionId === 'current')) {
-      this.session = null;
-      const view = this.getReactView();
-      if (view) {
-        view.clearMessages();
-        view.setSessionActive(false);
-        view.showError(this.t.sessionCleared);
-      }
-    }
-  }
-
-  async openRoadmap(): Promise<void> {
-    if (!this.session) return;
-    const roadmapPath = `${this.sessionManager.getSessionDir(this.session.noteSlug)}/roadmap.html`;
-    try {
-      const exists = await this.app.vault.adapter.exists(roadmapPath);
-      if (!exists) {
-        new Notice(this.t.noRoadmap);
-        return;
-      }
-      const vaultPath = this.app.vault.getRoot().path
-        ? `${this.app.vault.getRoot().path.replace(/\/$/, '')}/${roadmapPath}`
-        : roadmapPath;
-      window.open(`file://${vaultPath}`);
-    } catch {
-      new Notice(this.t.noRoadmap);
-    }
+    return this.tutoringFlow.startTutoringWithSelection(selection);
   }
 
   async processUserResponse(text: string): Promise<void> {
-    if (!this.session) return;
-    this.updateLanguageFromText(text);
-    this.appendUserMessage('answer', text);
-    await this.continueTutoring();
+    return this.tutoringFlow.processUserResponse(text);
   }
 
-  async processChoiceSelection(option: string, _index: number): Promise<void> {
-    if (!this.session) return;
-    this.updateLanguageFromText(option);
-    this.appendUserMessage('choice-result', option);
-    await this.continueTutoring();
+  async processChoiceSelection(option: string, index: number): Promise<void> {
+    return this.tutoringFlow.processChoiceSelection(option, index);
   }
 
-  private appendUserMessage(type: 'answer' | 'choice-result', content: string): void {
-    if (!this.session) return;
-    this.tracer?.userInput(this.session.noteSlug, type, content);
-    const msg: TutorMessage = {
-      id: generateId(),
-      role: 'user',
-      type,
-      content,
-      timestamp: Date.now(),
-    };
-    this.session.messages.push(msg);
-    this.getReactView()?.addMessage(msg);
+  async listSessionHistory(): Promise<SessionSummary[]> {
+    return this.tutoringFlow.listSessionHistory();
   }
 
-  private async startNewSessionWithNote(noteTitle: string, noteContent: string): Promise<void> {
-    const base = this.sessionManager.createNewSession(noteTitle, noteContent);
-    this.session = {
-      ...base,
-      currentConceptId: null,
-      concepts: [],
-      conceptOrder: [],
-      misconceptions: [],
-      messages: [],
-    };
-
-    const slug = this.session.noteSlug;
-    this.llmService.setSessionSlug(slug);
-    this.engine.setSessionSlug(slug);
-    this.tracer?.startSession(slug, noteTitle, noteContent);
-
-    const view = this.getReactView();
-    if (!view) return;
-
-    view.clearMessages();
-    view.setSessionActive(true);
-
-    await this.runDiagnosis();
+  async loadSessionFromHistory(slug: string, sessionId?: string): Promise<void> {
+    return this.tutoringFlow.loadSessionFromHistory(slug, sessionId);
   }
 
-  private async resumeSession(): Promise<void> {
-    if (!this.session) return;
-    const view = this.getReactView();
-    if (!view) return;
-
-    await this.restoreSessionView(this.session, view);
-
-    try {
-      const needsReview = this.session.concepts.filter(
-        c => c.status === 'mastered' && c.lastReviewTime &&
-          (Date.now() - c.lastReviewTime) / 1000 > c.reviewInterval
-      );
-
-      if (needsReview.length > 0) {
-        view.addMessage({
-          id: generateId(),
-          role: 'tutor',
-          type: 'info',
-          content: `${needsReview.length} ${this.t.dueForReview}`,
-          timestamp: Date.now(),
-        });
-        for (const concept of needsReview) {
-          await this.runReview(concept);
-        }
-      }
-
-      view.updateProgress(this.session);
-
-      const lastMsg = this.session.messages[this.session.messages.length - 1];
-      const hasPendingQuestion = lastMsg
-        && lastMsg.role === 'tutor'
-        && (lastMsg.type === 'question' || lastMsg.question !== undefined);
-
-      if (!hasPendingQuestion) {
-        await this.continueTutoring();
-      }
-    } catch (error) {
-      view.showError(`${this.t.resumeFailed}: ${getErrorMessage(error)}`);
-    }
+  async deleteSessionFromHistory(slug: string, sessionId?: string): Promise<void> {
+    return this.tutoringFlow.deleteSessionFromHistory(slug, sessionId);
   }
 
-  private async runDiagnosis(): Promise<void> {
-    await this.withSessionView(async (view) => {
-      const msg = await this.engine.stepDiagnosis(this.session!);
-      this.session!.messages.push(msg);
-      view.addMessage(msg);
-      view.updateProgress(this.session!);
-      await this.sessionManager.saveSession(this.session!.noteSlug, this.session!);
-    }, this.t.diagnosisFailed);
-  }
-
-  private async extractConceptsAndBuildRoadmap(recursionDepth = 0): Promise<void> {
-    await this.withSessionView(async (view) => {
-      const { concepts } = await this.engine.stepExtractConcepts(this.session!);
-
-      const conceptStates: ConceptState[] = concepts.map(c => ({
-        id: c.id,
-        name: c.name,
-        description: c.description,
-        dependencies: c.dependencies,
-        status: 'pending' as const,
-        masteryScore: 0,
-        lastReviewTime: null,
-        reviewInterval: 0,
-        selfAssessment: null,
-      }));
-
-      this.session!.concepts = conceptStates;
-      this.session!.conceptOrder = concepts.map(c => c.id);
-
-      const roadmapHtml = generateRoadmapHtml(this.session!);
-      await this.sessionManager.saveRoadmap(this.session!.noteSlug, roadmapHtml);
-      await this.sessionManager.saveSession(this.session!.noteSlug, this.session!);
-
-      const transitionMsg: TutorMessage = {
-        id: generateId(),
-        role: 'tutor',
-        type: 'info',
-        content: this.t.conceptTransition,
-        timestamp: Date.now(),
-      };
-      this.session!.messages.push(transitionMsg);
-      view.addMessage(transitionMsg);
-
-      await this.continueTutoring(recursionDepth + 1);
-    }, this.t.conceptExtractFailed);
-  }
-
-  private async continueTutoring(recursionDepth = 0): Promise<void> {
-    if (recursionDepth > 5) {
-      new Notice(this.t.tutoringError);
-      return;
-    }
-    if (!this.session) return;
-    const view = this.getReactView();
-    if (!view) return;
-
-    try {
-      if (this.session.concepts.length === 0) {
-        const tutorQuestions = this.session.messages.filter(
-          m => m.role === 'tutor' && (m.type === 'question' || m.type === 'feedback')
-        ).length;
-        const userAnswers = this.session.messages.filter(
-          m => m.role === 'user'
-        ).length;
-
-        const diagnosisRound = tutorQuestions + 1;
-        if (diagnosisRound < 2 || userAnswers < tutorQuestions) {
-          const msg = await this.engine.stepDiagnosis(this.session, diagnosisRound);
-          this.session.messages.push(msg);
-          view.addMessage(msg);
-          await this.sessionManager.saveSession(this.session.noteSlug, this.session);
-          return;
-        }
-
-        await this.extractConceptsAndBuildRoadmap(recursionDepth);
-        return;
-      }
-
-      const unmastered = this.session.concepts.filter(
-        c => c.status === 'pending' || c.status === 'learning'
-      );
-
-      if (unmastered.length === 0 && !this.session.currentConceptId) {
-        await this.finalizeSession();
-        return;
-      }
-
-      if (!this.session.currentConceptId) {
-        const next = unmastered[0];
-        if (next) {
-          this.session.currentConceptId = next.id;
-          next.status = 'learning';
-        }
-      }
-
-      if (!this.session.currentConceptId) {
-        await this.finalizeSession();
-        return;
-      }
-
-      const currentConcept = this.session.concepts.find(
-        c => c.id === this.session!.currentConceptId
-      );
-
-      if (!currentConcept) {
-        this.session.currentConceptId = null;
-        await this.continueTutoring(recursionDepth + 1);
-        return;
-      }
-
-      if (currentConcept.status === 'mastered') {
-        this.session.currentConceptId = null;
-        await this.continueTutoring(recursionDepth + 1);
-        return;
-      }
-
-      const rounds = this.countRoundsForConcept(currentConcept.id);
-      if (rounds >= 3) {
-        // Only skip mastery check if the *most recent* tutor message is the
-        // mastery feedback itself. If the last tutor message is a question,
-        // the student has since answered it and we need to reassess.
-        const lastTutorMsg = [...this.session.messages].reverse().find(m => m.role === 'tutor');
-        const justChecked = lastTutorMsg?.type === 'feedback' &&
-          (lastTutorMsg.content.startsWith('Mastery:') || lastTutorMsg.content.startsWith('掌握度：'));
-        if (!justChecked) {
-          await this.runMasteryCheck(currentConcept.id);
-          return;
-        }
-      }
-
-      view.updateProgress(this.session);
-
-      // Guard: don't ask a new question if the last message is already a pending question
-      const lastMsg = this.session.messages[this.session.messages.length - 1];
-      if (lastMsg && lastMsg.role === 'tutor' && (lastMsg.type === 'question' || lastMsg.question !== undefined)) {
-        return;
-      }
-
-      const msg = await this.engine.stepAskQuestion(this.session);
-      this.session.messages.push(msg);
-      view.addMessage(msg);
-
-      // Only auto-continue if the message is effectively empty (placeholder or no content).
-      // If the LLM produced substantive text (even without a proper tool call), show it
-      // to the user instead of firing another LLM request immediately.
-      const isEmpty = (!msg.content?.trim() || msg.content.trim() === '...') && !msg.question;
-      if (isEmpty && recursionDepth < 5) {
-        await this.continueTutoring(recursionDepth + 1);
-        return;
-      }
-
-      view.updateProgress(this.session);
-      await this.sessionManager.saveSession(this.session.noteSlug, this.session);
-    } catch (error) {
-      view.showError(`Error: ${getErrorMessage(error)}`);
-    }
-  }
-
-  private async runMasteryCheck(conceptId: string): Promise<void> {
-    await this.withSessionView(async (view) => {
-      const concept = this.session!.concepts.find(c => c.id === conceptId);
-      if (!concept) return;
-
-      const { message: msg, dimensions } = await this.engine.stepMasteryCheck(this.session!, conceptId);
-      this.session!.messages.push(msg);
-      view.addMessage(msg);
-
-      const selfAssessment = await view.showSelfAssessment();
-
-      const { passed, newScore } = this.engine.updateMasteryFromCheck(
-        this.session!, conceptId, dimensions, selfAssessment
-      );
-
-      if (passed && newScore >= this.settings.masteryThreshold) {
-        concept.status = 'mastered';
-        this.session!.currentConceptId = null;
-        const masteryMsg: TutorMessage = {
-          id: generateId(),
-          role: 'tutor',
-          type: 'info',
-          content: `${concept.name} mastered! (${newScore}%)`,
-          timestamp: Date.now(),
-        };
-        this.session!.messages.push(masteryMsg);
-        view.addMessage(masteryMsg);
-        await this.runPracticeTask(concept.id);
-      } else {
-        this.session!.currentConceptId = conceptId;
-        concept.status = 'learning';
-        const feedbackMsg: TutorMessage = {
-          id: generateId(),
-          role: 'tutor',
-          type: 'feedback',
-          content: `掌握度：${newScore}%（基于正确性、解释深度、新颖应用、概念区分四个维度的评估，达到 80% 即可掌握该概念）。`,
-          timestamp: Date.now(),
-        };
-        this.session!.messages.push(feedbackMsg);
-        view.addMessage(feedbackMsg);
-      }
-
-      view.updateProgress(this.session!);
-      await this.sessionManager.saveSession(this.session!.noteSlug, this.session!);
-
-      // Continue the conversation so the tutor either asks another question
-      // for the current concept or moves on to the next one.
-      await this.continueTutoring();
-    }, this.t.masteryCheckFailed);
-  }
-
-  private async runPracticeTask(conceptId: string): Promise<void> {
-    await this.withSessionView(async (view) => {
-      const msg = await this.engine.stepPracticeTask(this.session!, conceptId);
-      this.session!.messages.push(msg);
-      view.addMessage(msg);
-
-      view.updateProgress(this.session!);
-      await this.sessionManager.saveSession(this.session!.noteSlug, this.session!);
-    }, this.t.practiceFailed);
-  }
-
-  private async runReview(concept: { id: string }): Promise<void> {
-    await this.withSessionView(async (view) => {
-      const fullConcept = this.session!.concepts.find(c => c.id === concept.id);
-      if (!fullConcept) return;
-
-      const msg = await this.engine.stepReviewQuestion(this.session!, fullConcept);
-      this.session!.messages.push(msg);
-      view.addMessage(msg);
-    }, this.t.reviewFailed);
-  }
-
-  private async finalizeSession(): Promise<void> {
-    await this.withSessionView(async () => {
-      this.session!.completed = true;
-
-      // Extract and persist session memories
-      const memories = this.sessionManager.memoryExtractor.extractFromSession(this.session!);
-      for (const memory of memories) {
-        await this.sessionManager.memoryManager.save(memory);
-      }
-
-      await this.generateSessionOutputs();
-      await this.updateLearnerProfile();
-      await this.sessionManager.saveSession(this.session!.noteSlug, this.session!);
-      await this.sessionManager.archiveSession(this.session!.noteSlug);
-    }, this.t.finalizeFailed);
-  }
-
-  private async generateSessionOutputs(): Promise<void> {
-    if (!this.session) return;
-
-    try {
-      const slug = this.session.noteSlug;
-
-      const roadmapHtml = generateRoadmapHtml(this.session);
-      await this.sessionManager.saveRoadmap(slug, roadmapHtml);
-
-      const summaryHtml = generateSummaryHtml(this.session, false);
-      await this.sessionManager.saveSummary(slug, summaryHtml, false);
-
-      const finalSummaryHtml = generateSummaryHtml(this.session, true);
-      await this.sessionManager.saveSummary(slug, finalSummaryHtml, true);
-    } catch (error) {
-      new Notice(`${this.t.outputFailed}: ${getErrorMessage(error)}`);
-    }
-  }
-
-  private async updateLearnerProfile(): Promise<void> {
-    if (!this.session) return;
-
-    try {
-      const profile = await this.sessionManager.loadLearnerProfile();
-      const mastered = this.session.concepts
-        .filter((c) => c.status === 'mastered')
-        .map((c) => c.name);
-      const struggling = this.session.concepts
-        .filter((c) => c.status === 'learning' && c.masteryScore < 40)
-        .map((c) => c.name);
-
-      const updatedProfile = {
-        ...(profile || {}),
-        learningStyle: profile?.learningStyle || 'unknown',
-        commonMisconceptionPatterns: [
-          ...new Set([
-            ...(profile?.commonMisconceptionPatterns || []),
-            ...this.session.misconceptions
-              .filter((m) => !m.resolved)
-              .map((m) => m.inferredRootCause),
-          ]),
-        ],
-        selfCalibrationHistory: [...(profile?.selfCalibrationHistory || [])],
-        sessionCount: (profile?.sessionCount || 0) + 1,
-        lastUpdated: Date.now(),
-        memories: profile?.memories || emptyMemoryCollection(),
-        preferredConcepts: [...new Set([...(profile?.preferredConcepts || []), ...mastered])],
-        strugglingConcepts: [...new Set([...(profile?.strugglingConcepts || []), ...struggling])],
-      };
-      await this.sessionManager.saveLearnerProfile(updatedProfile);
-    } catch (error) {
-      new Notice(`${this.t.profileFailed}: ${getErrorMessage(error)}`);
-    }
-  }
-
-  private countRoundsForConcept(conceptId: string): number {
-    if (!this.session) return 0;
-    return this.session.messages.filter(m => {
-      if (m.role !== 'tutor') return false;
-      // Only count questions explicitly tagged with this conceptId.
-      // Diagnosis-phase questions have no conceptId and must NOT count
-      // toward a specific concept's teaching rounds.
-      return m.question?.conceptId === conceptId;
-    }).length;
-  }
-
-  /**
-   * Wraps tutoring operations with session/view validation and error handling.
-   * Eliminates the repetitive pattern across all tutoring flow methods.
-   */
-  private async withSessionView(
-    fn: (view: ReactSocraticView) => Promise<void>,
-    errorLabel: string,
-  ): Promise<void> {
-    if (!this.session) return;
-    const view = this.getReactView();
-    if (!view) return;
-    try {
-      await fn(view);
-    } catch (error) {
-      view.showError(`${errorLabel}: ${getErrorMessage(error)}`);
-    }
-  }
-
-  /**
-   * Common setup shared by startTutoring and startTutoringWithSelection.
-   * Validates prerequisites, detects language, and configures the engine.
-   */
-  private async prepareTutoring(): Promise<
-    { view: ReactSocraticView; note: { title: string; content: string }; slug: string; lang: Lang } | null
-  > {
-    const view = this.getReactView();
-    if (!view) {
-      new Notice(this.t.noPanel);
-      return null;
-    }
-    if (!this.settings.apiKey) {
-      view.showError(this.t.noApiKey);
-      return null;
-    }
-    const note = this.getActiveNote();
-    if (!note) {
-      view.showError(this.t.noNote);
-      return null;
-    }
-    const lang = resolveLang(this.settings.language, note.content);
-    this.currentLang = lang;
-    this.t = getTranslations(lang);
-    this.engine.setLanguage(lang);
-    view.setLanguageFromContent(this.settings.language, note.content);
-    const slug = slugify(note.title);
-    return { view, note, slug, lang };
-  }
-
-  /**
-   * Restore session UI state shared by resumeSession and loadSessionFromHistory.
-   */
-  private async restoreSessionView(session: SessionState, view: ReactSocraticView): Promise<void> {
-    const slug = session.noteSlug;
-    this.llmService.setSessionSlug(slug);
-    this.engine.setSessionSlug(slug);
-    this.tracer?.startSession(slug, session.noteTitle, session.noteContent);
-
-    view.clearMessages();
-    view.setSessionActive(true);
-
-    for (const msg of session.messages) {
-      view.addMessage(msg);
-    }
+  async openRoadmap(): Promise<void> {
+    return this.tutoringFlow.openRoadmap();
   }
 }

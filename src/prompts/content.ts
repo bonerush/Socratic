@@ -109,12 +109,28 @@ export function buildConceptExtractionPrompt(): string {
 按从基础到高级的顺序排列概念，基于它们的依赖关系。`;
 }
 
-export function buildMasteryCheckPrompt(conceptName: string): string {
-  return `对概念 "${conceptName}" 进行掌握度检查。提问覆盖所有 4 个维度：
+export function buildMasteryCheckPrompt(conceptName: string, conceptId: string): string {
+  return `学生已经学习了概念 "${conceptName}"（概念ID: ${conceptId}）一段时间。现在请提出一个掌握度检查问题，覆盖以下 4 个维度中的至少 1 个：
 1. 正确性（事实准确性）
 2. 解释深度（能解释"为什么"）
 3. 新颖应用（能处理未见过的场景）
 4. 概念区分（能区分相似概念）
+
+这个问题应该比之前的教学问题更深入，用于检验学生是否真正掌握了这个概念。
+
+CRITICAL: 你必须调用 provide_guidance 工具返回你的问题。不要输出纯文本——纯文本会被系统忽略。
+
+重要：请在 conceptId 字段中填写 "${conceptId}"，以便系统正确追踪学习进度。`;
+}
+
+export function buildMasteryAssessPrompt(conceptName: string): string {
+  return `学生刚刚回答了关于概念 "${conceptName}" 的掌握度检查问题。请基于学生的回答进行评估，覆盖以下 4 个维度：
+1. 正确性（事实准确性）
+2. 解释深度（能解释"为什么"）
+3. 新颖应用（能处理未见过的场景）
+4. 概念区分（能区分相似概念）
+
+给出简要的评估反馈，然后调用 assess_mastery 工具返回评估结果。
 
 CRITICAL: 你必须调用 assess_mastery 工具。不要输出纯文本——纯文本会被系统忽略。在工具的 masteryCheck 字段中为每个维度打分（true/false）。`;
 }

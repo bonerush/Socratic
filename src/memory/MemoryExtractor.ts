@@ -1,5 +1,5 @@
 import type { SessionState, Memory, MemoryType } from '../types';
-import { generateId } from '../utils/helpers';
+import { generateId } from '../utils/common';
 
 /**
  * Extracts structured memories from tutoring sessions.

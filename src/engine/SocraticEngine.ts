@@ -2,8 +2,7 @@ import { type SessionState, type TutorMessage, type ConceptState, type SelfAsses
 import { LLMService } from '../llm/LLMService';
 import { PromptBuilder, assembleBlocks, type SystemPromptContext } from '../llm/PromptBuilder';
 import { getToolDefinitionsForPhase } from '../llm/tools';
-import { generateId } from '../utils/helpers';
-import { formatInterval } from '../utils/text';
+import { generateId, formatInterval } from '../utils/common';
 import type { Tracer } from '../debug/Tracer';
 import { ResponseParser, type ExtractedConcept } from './ResponseParser';
 import { ResponseHealer } from './ResponseHealer';
@@ -130,10 +129,15 @@ export class SocraticEngine {
     }
 
     const recentMessages = session.messages.slice(-MAX_CONTEXT_MESSAGES);
-    const context = recentMessages.map(m => ({
-      role: (m.role === 'tutor' ? 'assistant' : 'user') as 'user' | 'assistant',
-      content: m.content,
-    }));
+    const context = recentMessages
+      // Exclude system-generated mastery feedback from the conversation context
+      // to prevent the LLM from mistaking it as prompt injection.
+      .filter(m => !(m.role === 'tutor' && m.type === 'feedback' &&
+        (m.content.startsWith('Mastery:') || m.content.startsWith('掌握度：'))))
+      .map(m => ({
+        role: (m.role === 'tutor' ? 'assistant' : 'user') as 'user' | 'assistant',
+        content: m.content,
+      }));
 
     // Prepend conversation summary at the start if available
     if (conversationSummary) {
@@ -382,14 +386,14 @@ Requirements:
     });
   }
 
-  async stepMasteryCheck(session: SessionState, conceptId: string): Promise<{ message: TutorMessage; dimensions: MasteryDimension }> {
+  async stepMasteryCheck(session: SessionState, conceptId: string): Promise<TutorMessage> {
     this.tracer?.engineStep(this.sessionSlug, 'stepMasteryCheck', { conceptId });
     return this.withPhase('mastery_check', async () => {
       const systemPrompt = this.buildContextAwareSystemPrompt(session);
       const concept = session.concepts.find(c => c.id === conceptId);
       if (!concept) throw new Error(`Concept ${conceptId} not found`);
 
-      const prompt = this.promptBuilder.buildMasteryCheckPrompt(concept.name);
+      const prompt = this.promptBuilder.buildMasteryCheckPrompt(concept.name, conceptId);
       const messages = this.buildConversationContext(session);
 
       const parsed = await this.healer.chatWithEmptyContentHealing(
@@ -402,6 +406,46 @@ Requirements:
         0.5,
         1500,
         getToolDefinitionsForPhase('mastery-check'),
+        true,
+        (response) => this.parser.parseStructuredResponse(response),
+      );
+
+      const message = this.parser.buildTutorMessageFromParsed(this.sessionSlug, parsed);
+
+      // Inject conceptId if the LLM omitted it, so round-counting works reliably.
+      if (message.question && !message.question.conceptId) {
+        message.question.conceptId = conceptId;
+      }
+
+      // Mark as mastery check question so the engine can detect pending checks.
+      if (message.question) {
+        message.question.isMasteryCheck = true;
+      }
+
+      return message;
+    });
+  }
+
+  async stepAssessMastery(session: SessionState, conceptId: string): Promise<{ message: TutorMessage; dimensions: MasteryDimension }> {
+    this.tracer?.engineStep(this.sessionSlug, 'stepAssessMastery', { conceptId });
+    return this.withPhase('mastery_check', async () => {
+      const systemPrompt = this.buildContextAwareSystemPrompt(session);
+      const concept = session.concepts.find(c => c.id === conceptId);
+      if (!concept) throw new Error(`Concept ${conceptId} not found`);
+
+      const prompt = this.promptBuilder.buildMasteryAssessPrompt(concept.name);
+      const messages = this.buildConversationContext(session);
+
+      const parsed = await this.healer.chatWithEmptyContentHealing(
+        this.sessionSlug,
+        systemPrompt,
+        [
+          ...messages,
+          { role: 'user', content: prompt },
+        ],
+        0.5,
+        1500,
+        getToolDefinitionsForPhase('mastery-assess'),
         true,
         (response) => this.parser.parseStructuredResponse(response),
       );
