@@ -6,6 +6,7 @@ import { SelfAssessment } from './components/SelfAssessment';
 import { SessionResume } from './components/SessionResume';
 import { SessionHistory } from './components/SessionHistory';
 import { NoteSwitchResume } from './components/NoteSwitchResume';
+import { EnergyRing } from './components/EnergyRing';
 import type { ReactSocraticView } from '../ReactSocraticView';
 
 interface SocraticAppProps {
@@ -26,11 +27,14 @@ function SocraticAppInner() {
   return (
     <div className="socratic-view">
       <div className="socratic-header">
-        <h3>{t.viewTitle}</h3>
+        <div className="socratic-header__brand">
+          <h3>{t.viewTitle}</h3>
+          {!isSessionActive && <EnergyRing />}
+        </div>
         <div className="socratic-header-actions">
-          <span className="socratic-status">
-            {isSessionActive ? t.viewStatusReady : t.noActiveSession}
-          </span>
+          {isSessionActive && (
+            <span className="socratic-status">{t.viewStatusReady}</span>
+          )}
           {isSessionActive && (
             <button
               className="socratic-btn socratic-btn-ghost"
@@ -42,7 +46,8 @@ function SocraticAppInner() {
             </button>
           )}
           <button
-            className="socratic-btn socratic-btn-ghost"
+            type="button"
+            className="socratic-link"
             onClick={() => setShowHistory(true)}
             disabled={isProcessing}
             title={t.sessionHistoryTitle}

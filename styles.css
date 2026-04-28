@@ -4,6 +4,24 @@
   height: 100%;
   padding: 0;
   overflow: hidden;
+
+  /* ── Design Tokens (Socratic brand layer) ── */
+  --socratic-particle-color: 100, 110, 130;
+  --socratic-orb-node-color: 80, 130, 200;
+  --socratic-orb-glow: 140, 180, 240;
+  --socratic-glass-tint: rgba(255, 255, 255, 0.10);
+  --socratic-glass-border: rgba(255, 255, 255, 0.22);
+  --socratic-shimmer: rgba(255, 255, 255, 0.45);
+  --socratic-ring-c1: #88c5ff;
+  --socratic-ring-c2: #c8e8ff;
+}
+
+.theme-dark .socratic-view {
+  --socratic-particle-color: 220, 225, 235;
+  --socratic-orb-node-color: 180, 210, 255;
+  --socratic-orb-glow: 160, 200, 255;
+  --socratic-glass-tint: rgba(255, 255, 255, 0.06);
+  --socratic-glass-border: rgba(255, 255, 255, 0.14);
 }
 
 /* ── Header ── */
@@ -20,10 +38,94 @@
 
 .socratic-header h3 {
   margin: 0;
-  font-size: 15px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  font-family: 'Palatino Linotype', 'Book Antiqua', 'Georgia', 'Times New Roman', 'Noto Serif CJK SC', 'Songti SC', serif;
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  font-family: 'Bodoni 72', 'Bodoni 72 Oldstyle', 'Didot', 'GFS Didot',
+               'Hoefler Text', 'Apple Garamond', 'Garamond',
+               'Times New Roman', 'Songti SC', 'Noto Serif CJK SC', serif;
+  line-height: 1.1;
+}
+
+.socratic-header__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.socratic-link {
+  position: relative;
+  background: none;
+  border: none;
+  padding: 4px 2px;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: color 0.25s ease;
+}
+
+.socratic-link::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--text-normal);
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.1, 1);
+}
+
+.socratic-link:hover {
+  color: var(--text-normal);
+}
+
+.socratic-link:hover::after {
+  transform: scaleX(1);
+}
+
+.socratic-link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.socratic-link:disabled:hover::after {
+  transform: scaleX(0);
+}
+
+.socratic-energy-ring {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  animation: ringSpin 8s linear infinite;
+}
+
+.socratic-energy-ring__inner {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    var(--socratic-ring-c1) 90deg,
+    var(--socratic-ring-c2) 180deg,
+    var(--socratic-ring-c1) 270deg,
+    transparent 360deg
+  );
+  -webkit-mask: radial-gradient(circle, transparent 3.5px, #000 4px);
+          mask: radial-gradient(circle, transparent 3.5px, #000 4px);
+  animation: ringBreathe 3s ease-in-out infinite;
+}
+
+@keyframes ringSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes ringBreathe {
+  0%, 100% { opacity: 0.55; transform: scale(1); }
+  50%      { opacity: 0.95; transform: scale(1.12); }
 }
 
 .socratic-status {
@@ -76,11 +178,205 @@
 }
 
 .socratic-welcome {
-  text-align: center;
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-height: 100%;
+  padding: 0;
+  text-align: left;
+  overflow: hidden;
+  animation: welcomeFadeIn 0.6s ease-out both;
+}
+
+.socratic-welcome__canvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  z-index: 0;
+}
+
+.socratic-orb-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.socratic-welcome__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 56% 8% 32px;
+  pointer-events: none;
+}
+
+.socratic-welcome__content > * {
+  pointer-events: auto;
+}
+
+@keyframes welcomeFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.socratic-hero {
+  font-family: 'Bodoni 72', 'Bodoni 72 Oldstyle', 'Didot', 'GFS Didot',
+               'Hoefler Text', 'Apple Garamond', 'Garamond',
+               'Songti SC', 'Noto Serif CJK SC', serif;
+  font-size: clamp(32px, 8.5vw, 48px);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  line-height: 1.05;
+  margin: 0;
+  color: var(--text-normal);
+  display: flex;
+  flex-direction: column;
+}
+
+.socratic-hero-line {
+  display: block;
+  opacity: 0;
+  filter: blur(6px);
+  transform: translateY(16px);
+  animation: heroLineIn 0.7s cubic-bezier(0.2, 0.7, 0.1, 1) forwards;
+  white-space: pre-wrap;
+}
+
+.socratic-hero-line--1 { animation-delay: 2.2s; }
+.socratic-hero-line--2 {
+  margin-left: 12%;
+  animation-delay: 2.38s;
+}
+
+@keyframes heroLineIn {
+  to { opacity: 1; filter: blur(0); transform: translateY(0); }
+}
+
+.socratic-sub {
+  margin: 28px 0 0 12%;
+  font-size: 13px;
+  line-height: 1.55;
   color: var(--text-muted);
-  padding: 48px 20px;
+  letter-spacing: 0.01em;
+  opacity: 0;
+  transform: translateX(-12px);
+  animation: subIn 0.6s ease-out 2.7s forwards;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Helvetica Neue',
+               'PingFang SC', 'Hiragino Sans GB', sans-serif;
+}
+
+@keyframes subIn {
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.socratic-cta-wrap {
+  margin: 36px 0 0 12%;
+  opacity: 0;
+  transform: translateY(10px) scale(0.96);
+  animation: ctaIn 0.7s cubic-bezier(0.2, 0.7, 0.1, 1) 3s forwards;
+}
+
+@keyframes ctaIn {
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.socratic-glass-btn {
+  position: relative;
+  overflow: hidden;
+  padding: 14px 32px;
+  border-radius: 999px;
+  border: 1px solid var(--socratic-glass-border);
+  background: var(--socratic-glass-tint);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  color: var(--text-normal);
   font-size: 14px;
-  line-height: 1.6;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: transform 0.35s cubic-bezier(0.2, 0.7, 0.1, 1),
+              box-shadow 0.35s ease,
+              border-color 0.35s ease;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.08),
+    0 4px 24px rgba(0, 0, 0, 0.12);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .socratic-glass-btn { background: rgba(255, 255, 255, 0.20); }
+  .theme-dark .socratic-glass-btn { background: rgba(40, 50, 70, 0.55); }
+}
+
+.socratic-glass-btn:hover {
+  transform: scale(1.03);
+  border-color: var(--interactive-accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.08),
+    0 6px 28px rgba(0, 0, 0, 0.16),
+    0 0 24px color-mix(in oklch, var(--interactive-accent) 35%, transparent);
+}
+
+.socratic-glass-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.socratic-glass-btn:disabled:hover {
+  transform: none;
+  border-color: var(--socratic-glass-border);
+}
+
+.socratic-glass-btn__label {
+  position: relative;
+  z-index: 1;
+}
+
+.socratic-glass-btn__shimmer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(
+    110deg,
+    transparent 0%,
+    var(--socratic-shimmer) 50%,
+    transparent 100%
+  );
+  transform: translateX(-180%);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.socratic-glass-btn:hover .socratic-glass-btn__shimmer {
+  animation: shimmerSweep 1.1s ease-out forwards;
+}
+
+@keyframes shimmerSweep {
+  0%   { transform: translateX(-180%); opacity: 0; }
+  20%  { opacity: 1; }
+  100% { transform: translateX(280%); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .socratic-welcome,
+  .socratic-hero-line,
+  .socratic-sub,
+  .socratic-cta-wrap,
+  .socratic-energy-ring,
+  .socratic-energy-ring__inner,
+  .socratic-glass-btn__shimmer {
+    animation: none !important;
+  }
+  .socratic-hero-line,
+  .socratic-sub,
+  .socratic-cta-wrap {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
 }
 
 .socratic-message {
@@ -521,31 +817,6 @@
 
 .socratic-option-btn-pulse {
   animation: optionPulse 1.2s ease-out;
-}
-
-.socratic-welcome-icon {
-  margin-bottom: 12px;
-  opacity: 0.4;
-}
-
-.socratic-welcome-title {
-  font-size: 18px;
-  font-weight: 650;
-  margin: 0 0 8px;
-  color: var(--text-normal);
-}
-
-.socratic-welcome-hint {
-  font-size: 14px;
-  color: var(--text-muted);
-  margin: 0 0 24px;
-}
-
-.socratic-welcome-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 100%;
 }
 
 .socratic-assessment {

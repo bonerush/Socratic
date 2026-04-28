@@ -3,12 +3,12 @@ export type Lang = 'en' | 'zh';
 export interface TranslationMap {
   viewTitle: string;
   viewStatusReady: string;
-  noActiveSession: string;
   startTutoring: string;
   viewRoadmap: string;
   newSession: string;
   inputPlaceholder: string;
-  welcomeMessage: string;
+  welcomeHero: string;
+  welcomeSub: string;
   thinking: string;
   selfAssessmentTitle: string;
   selfAssessmentSolid: string;
@@ -94,12 +94,12 @@ export interface TranslationMap {
 const en: TranslationMap = {
   viewTitle: 'Socratic',
   viewStatusReady: 'Ready',
-  noActiveSession: 'No active session',
   startTutoring: 'Start Tutoring',
   viewRoadmap: 'View Roadmap',
   newSession: 'New Session',
   inputPlaceholder: 'Type your answer here...',
-  welcomeMessage: 'Open a note and click "Start Tutoring" to begin.',
+  welcomeHero: 'Think,\nbegin with a question.',
+  welcomeSub: 'Open a note, click Start Tutoring.',
   thinking: 'Thinking',
   selfAssessmentTitle: 'How well do you feel you understand this concept?',
   selfAssessmentSolid: 'Solid — I could teach it',
@@ -180,12 +180,12 @@ const en: TranslationMap = {
 const zh: TranslationMap = {
   viewTitle: 'Socratic',
   viewStatusReady: '就绪',
-  noActiveSession: '无活跃会话',
   startTutoring: '开始辅导',
   viewRoadmap: '查看学习路线',
   newSession: '新建会话',
   inputPlaceholder: '在此输入你的答案...',
-  welcomeMessage: '打开笔记并点击"开始辅导"以开始学习。',
+  welcomeHero: '思考,\n从一个问题开始。',
+  welcomeSub: '打开笔记,点击开始辅导',
   thinking: '思考中',
   selfAssessmentTitle: '你觉得自己对这个概念的掌握程度如何？',
   selfAssessmentSolid: '扎实——我可以教给别人',
