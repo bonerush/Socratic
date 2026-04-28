@@ -56,8 +56,8 @@ export class SocraticSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('禁用工具调用')
-      .setDesc('如果你的 API 代理不支持 function calling，启用此项可让 LLM 以纯 JSON 格式响应')
+      .setName(this.t.disableToolCallingLabel)
+      .setDesc(this.t.disableToolCallingDesc)
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.disableToolCalling)
         .onChange(async value => {
@@ -118,8 +118,8 @@ export class SocraticSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Debug Mode')
-      .setDesc('Enable tracing of LLM calls, engine steps, and prompts for debugging. Trace files are saved as JSONL in the debug storage path.')
+      .setName(this.t.debugModeLabel)
+      .setDesc(this.t.debugModeDesc)
       .addToggle(toggle => toggle
         .setValue(this.plugin.settings.debugMode)
         .onChange(async value => {
@@ -129,8 +129,8 @@ export class SocraticSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName('Debug Trace Path')
-      .setDesc('Directory for debug trace files (defaults to session storage path /debug).')
+      .setName(this.t.debugPathLabel)
+      .setDesc(this.t.debugPathDesc)
       .addText(text => text
         .setPlaceholder('')
         .setValue(this.plugin.settings.debugStoragePath)

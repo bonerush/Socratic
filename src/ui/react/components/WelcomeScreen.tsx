@@ -5,6 +5,36 @@ import { NeuralOrbCanvas } from './NeuralOrbCanvas';
 export function WelcomeScreen(): React.ReactElement {
   const { t, onStartTutoring, isProcessing } = useSocratic();
   const [heroLine1, heroLine2] = t.welcomeHero.split('\n');
+  const actionWord = t.welcomeHeroActionWord;
+
+  const renderHeroLine2 = (): React.ReactNode => {
+    if (!heroLine2) return null;
+    const idx = heroLine2.indexOf(actionWord);
+    if (idx < 0) return heroLine2;
+    const before = heroLine2.slice(0, idx);
+    const after = heroLine2.slice(idx + actionWord.length);
+    return (
+      <>
+        {before}
+        <span
+          className="socratic-hero-action-word"
+          onClick={onStartTutoring}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onStartTutoring();
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-disabled={isProcessing}
+        >
+          {actionWord}
+        </span>
+        {after}
+      </>
+    );
+  };
 
   return (
     <div className="socratic-welcome">
@@ -13,21 +43,10 @@ export function WelcomeScreen(): React.ReactElement {
         <h2 className="socratic-hero">
           <span className="socratic-hero-line socratic-hero-line--1">{heroLine1}</span>
           {heroLine2 && (
-            <span className="socratic-hero-line socratic-hero-line--2">{heroLine2}</span>
+            <span className="socratic-hero-line socratic-hero-line--2">{renderHeroLine2()}</span>
           )}
         </h2>
         <p className="socratic-sub">{t.welcomeSub}</p>
-        <div className="socratic-cta-wrap">
-          <button
-            type="button"
-            className="socratic-glass-btn"
-            onClick={onStartTutoring}
-            disabled={isProcessing}
-          >
-            <span className="socratic-glass-btn__label">{t.startTutoring}</span>
-            <span className="socratic-glass-btn__shimmer" aria-hidden="true" />
-          </button>
-        </div>
       </div>
     </div>
   );

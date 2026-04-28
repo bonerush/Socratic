@@ -8,6 +8,7 @@ export interface TranslationMap {
   newSession: string;
   inputPlaceholder: string;
   welcomeHero: string;
+  welcomeHeroActionWord: string;
   welcomeSub: string;
   thinking: string;
   selfAssessmentTitle: string;
@@ -76,6 +77,14 @@ export interface TranslationMap {
   masteryDesc: string;
   maxConceptsLabel: string;
   maxConceptsDesc: string;
+  // Settings extras
+  disableToolCallingLabel: string;
+  disableToolCallingDesc: string;
+  debugModeLabel: string;
+  debugModeDesc: string;
+  debugPathLabel: string;
+  debugPathDesc: string;
+  masteryFeedbackTemplate: string;
   // Navigation & note switching
   exitToMain: string;
   noteSwitchResumeTitle: string;
@@ -101,7 +110,8 @@ const en: TranslationMap = {
   newSession: 'New Session',
   inputPlaceholder: 'Type your answer here...',
   welcomeHero: 'Think,\nbegin with a question.',
-  welcomeSub: 'Open a note, click Start Tutoring.',
+  welcomeHeroActionWord: 'question',
+  welcomeSub: 'Open a note and begin with a question.',
   thinking: 'Thinking',
   selfAssessmentTitle: 'How well do you feel you understand this concept?',
   selfAssessmentSolid: 'Solid — I could teach it',
@@ -167,6 +177,13 @@ const en: TranslationMap = {
   masteryDesc: 'Minimum score (0-100) required to mark a concept as mastered.',
   maxConceptsLabel: 'Max concepts per session',
   maxConceptsDesc: 'Maximum number of concepts to extract from a single note.',
+  disableToolCallingLabel: 'Disable tool calling',
+  disableToolCallingDesc: 'If your API proxy does not support function calling, enable this to make the LLM respond in plain JSON.',
+  debugModeLabel: 'Debug Mode',
+  debugModeDesc: 'Enable tracing of LLM calls, engine steps, and prompts for debugging. Trace files are saved as JSONL in the debug storage path.',
+  debugPathLabel: 'Debug Trace Path',
+  debugPathDesc: 'Directory for debug trace files (defaults to session storage path /debug).',
+  masteryFeedbackTemplate: 'Mastery: {score}% (assessed across correctness, explanation depth, novel application, and concept discrimination; 80% to master).',
   exitToMain: 'Back to Main',
   noteSwitchResumeTitle: 'An unfinished session was found for this note. Would you like to continue or start fresh?',
   noteSwitchResumeContinue: 'Continue',
@@ -188,7 +205,8 @@ const zh: TranslationMap = {
   newSession: '新建会话',
   inputPlaceholder: '在此输入你的答案...',
   welcomeHero: '思考,\n从一个问题开始。',
-  welcomeSub: '打开笔记,点击开始辅导',
+  welcomeHeroActionWord: '问题',
+  welcomeSub: '打开笔记，从一个问题开始。',
   thinking: '思考中',
   selfAssessmentTitle: '你觉得自己对这个概念的掌握程度如何？',
   selfAssessmentSolid: '扎实——我可以教给别人',
@@ -254,6 +272,13 @@ const zh: TranslationMap = {
   masteryDesc: '将概念标记为已掌握所需的最低分数（0-100）。',
   maxConceptsLabel: '每会话最大概念数',
   maxConceptsDesc: '从单篇笔记中提取的最大概念数量。',
+  disableToolCallingLabel: '禁用工具调用',
+  disableToolCallingDesc: '如果你的 API 代理不支持 function calling，启用此项可让 LLM 以纯 JSON 格式响应。',
+  debugModeLabel: '调试模式',
+  debugModeDesc: '启用 LLM 调用、引擎步骤和提示词的追踪以进行调试。追踪文件以 JSONL 格式保存在调试存储路径中。',
+  debugPathLabel: '调试追踪路径',
+  debugPathDesc: '调试追踪文件的目录（默认使用会话存储路径 /debug）。',
+  masteryFeedbackTemplate: '掌握度：{score}%（基于正确性、解释深度、新颖应用、概念区分四个维度的评估，达到 80% 即可掌握该概念）。',
   exitToMain: '返回主界面',
   noteSwitchResumeTitle: '检测到该笔记有未完成的会话。是否继续上次的进度还是重新开始？',
   noteSwitchResumeContinue: '继续',

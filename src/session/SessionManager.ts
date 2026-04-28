@@ -39,6 +39,48 @@ export class SessionManager {
     }
   }
 
+  async hasAnySessionHistory(noteSlug: string): Promise<boolean> {
+    if (await this.sessionExists(noteSlug)) return true;
+    const historyDir = this.getHistoryDir(noteSlug);
+    try {
+      const exists = await this.vault.adapter.exists(historyDir);
+      if (!exists) return false;
+      const listing = await this.vault.adapter.list(historyDir);
+      if (!listing || typeof listing !== 'object') return false;
+      const files = Array.isArray(listing.files) ? listing.files : [];
+      return files.some((f) => typeof f === 'string' && f.endsWith('.json'));
+    } catch {
+      return false;
+    }
+  }
+
+  async loadMostRecentSession(noteSlug: string): Promise<SessionState | null> {
+    const current = await this.loadSession(noteSlug);
+    if (current) return current;
+
+    const historyDir = this.getHistoryDir(noteSlug);
+    try {
+      const exists = await this.vault.adapter.exists(historyDir);
+      if (!exists) return null;
+      const listing = await this.vault.adapter.list(historyDir);
+      if (!listing || typeof listing !== 'object') return null;
+      const files = Array.isArray(listing.files) ? listing.files : [];
+
+      const jsonFiles = files
+        .filter((f): f is string => typeof f === 'string' && f.endsWith('.json'))
+        .map((f) => (f.startsWith(historyDir) ? f : normalizePath(`${historyDir}/${f}`)))
+        .sort();
+
+      if (jsonFiles.length === 0) return null;
+
+      const mostRecent = jsonFiles[jsonFiles.length - 1]!;
+      const content = await this.vault.adapter.read(mostRecent);
+      return JSON.parse(content) as SessionState;
+    } catch {
+      return null;
+    }
+  }
+
   async loadSession(noteSlug: string, sessionId?: string): Promise<SessionState | null> {
     const dir = this.getSessionDir(noteSlug);
     try {
@@ -316,6 +358,18 @@ export class SessionManager {
       return summaries;
     } catch {
       return [];
+    }
+  }
+
+  async clearCurrentSession(noteSlug: string): Promise<void> {
+    const sessionPath = normalizePath(`${this.getSessionDir(noteSlug)}/session.json`);
+    try {
+      const exists = await this.vault.adapter.exists(sessionPath);
+      if (exists) {
+        await this.vault.adapter.remove(sessionPath);
+      }
+    } catch {
+      // Ignore removal errors
     }
   }
 

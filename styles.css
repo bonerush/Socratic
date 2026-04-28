@@ -281,15 +281,24 @@
   to { opacity: 1; transform: translateX(0); }
 }
 
-.socratic-cta-wrap {
-  margin: 36px 0 0 12%;
-  opacity: 0;
-  transform: translateY(10px) scale(0.96);
-  animation: ctaIn 0.7s cubic-bezier(0.2, 0.7, 0.1, 1) 3s forwards;
+.socratic-hero-action-word {
+  color: var(--interactive-accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+  transition: opacity 0.25s ease, filter 0.25s ease;
 }
 
-@keyframes ctaIn {
-  to { opacity: 1; transform: translateY(0) scale(1); }
+.socratic-hero-action-word:hover {
+  opacity: 0.85;
+  filter: brightness(1.15);
+}
+
+.socratic-hero-action-word[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .socratic-glass-btn {

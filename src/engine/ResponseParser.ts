@@ -181,7 +181,7 @@ export class ResponseParser {
   buildTutorMessageFromParsed(sessionSlug: string, parsed: LLMStructuredResponse): TutorMessage {
     this.tracer?.parsedResult(sessionSlug, { ...parsed, _source: 'buildTutorMessage' });
     let questionType = parsed.questionType || null;
-    const content = parsed.content || '';
+    let content = parsed.content || '';
     let options = parsed.options;
     let correctOptionIndex = parsed.correctOptionIndex ?? undefined;
 
@@ -193,6 +193,9 @@ export class ResponseParser {
         options = extracted.options;
         correctOptionIndex = extracted.correctOptionIndex ?? correctOptionIndex;
         questionType = 'multiple-choice';
+        if (extracted.cleanedContent) {
+          content = extracted.cleanedContent;
+        }
       }
     }
 
@@ -201,6 +204,12 @@ export class ResponseParser {
     // question so the UI shows it as something the student can answer.
     if (!questionType && /[?？]/.test(content)) {
       questionType = 'open-ended';
+    }
+
+    // Strip option lines from content for multiple-choice questions so the
+    // message bubble shows only the stem, not duplicate option text.
+    if (questionType === 'multiple-choice' && options && options.length > 0) {
+      content = this.stripOptionLinesFromContent(content);
     }
 
     const question: Question | undefined = questionType
@@ -237,9 +246,10 @@ export class ResponseParser {
    *   C) xxx
    *   D xxx
    */
-  extractOptionsFromContent(content: string): { options: string[]; correctOptionIndex?: number } | null {
+  extractOptionsFromContent(content: string): { options: string[]; correctOptionIndex?: number; cleanedContent?: string } | null {
     const lines = content.split('\n');
     const options: string[] = [];
+    const nonOptionLines: string[] = [];
     const optionRegex = /^\s*([A-Da-d])[\.、。:：,，!！?？）\)\]\}\-\s]+\s*(.+)$/;
     const simpleRegex = /^\s*([A-Da-d])\s+(.+)$/;
 
@@ -253,14 +263,29 @@ export class ResponseParser {
           // Ensure array has enough slots
           while (options.length <= index) options.push('');
           options[index] = text;
+          continue;
         }
       }
+      nonOptionLines.push(line);
     }
 
     if (options.length >= 2 && options.every(o => o.trim().length > 0)) {
-      return { options };
+      return { options, cleanedContent: nonOptionLines.join('\n').trim() };
     }
     return null;
+  }
+
+  private stripOptionLinesFromContent(content: string): string {
+    const optionRegex = /^\s*([A-Da-d])[\.、。:：,，!！?？）\)\]\}\-\s]+\s*(.+)$/;
+    const simpleRegex = /^\s*([A-Da-d])\s+(.+)$/;
+
+    const lines = content.split('\n');
+    const cleaned = lines.filter((line) => {
+      const match = optionRegex.exec(line) || simpleRegex.exec(line);
+      return !match;
+    });
+
+    return cleaned.join('\n').trim();
   }
 
   inferMessageType(parsed: LLMStructuredResponse): TutorMessage['type'] {

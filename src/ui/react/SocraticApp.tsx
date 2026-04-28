@@ -45,15 +45,21 @@ function SocraticAppInner() {
           >
             {t.exitToMain}
           </button>
-          <button
-            type="button"
+          <span
             className="socratic-link"
             onClick={() => setShowHistory(true)}
-            disabled={isProcessing}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setShowHistory(true);
+              }
+            }}
             title={t.sessionHistoryTitle}
           >
             {t.sessionHistoryTitle}
-          </button>
+          </span>
         </div>
       </div>
       {isSessionActive && <ProgressPanel />}

@@ -66,12 +66,12 @@ export class TutoringFlow {
     const { view, note, slug } = prepared;
 
     try {
-      const exists = await this.sessionManager.sessionExists(slug);
+      const exists = await this.sessionManager.hasAnySessionHistory(slug);
 
       if (exists) {
         const choice = await view.showSessionResume();
         if (choice === 'resume') {
-          const loaded = await this.sessionManager.loadSession(slug);
+          const loaded = await this.sessionManager.loadMostRecentSession(slug);
           if (loaded) {
             this.session = loaded;
             await this.resumeSession();
@@ -79,7 +79,7 @@ export class TutoringFlow {
           }
         } else {
           await this.sessionManager.archiveSession(slug);
-          await this.sessionManager.deleteSession(slug);
+          await this.sessionManager.clearCurrentSession(slug);
         }
       }
 
@@ -472,7 +472,7 @@ export class TutoringFlow {
           id: generateId(),
           role: 'tutor',
           type: 'feedback',
-          content: `掌握度：${newScore}%（基于正确性、解释深度、新颖应用、概念区分四个维度的评估，达到 80% 即可掌握该概念）。`,
+          content: this.t.masteryFeedbackTemplate.replace('{score}', String(newScore)),
           timestamp: Date.now(),
         };
         this.pushMessage(feedbackMsg);

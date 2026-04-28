@@ -203,6 +203,10 @@ export default class SocraticNoteTutorPlugin extends Plugin {
 
   async exitToMainScreen(): Promise<void> {
     if (this.session) {
+      if (this.session.messages.length > 0) {
+        await this.sessionManager.archiveSession(this.session.noteSlug);
+        await this.sessionManager.clearCurrentSession(this.session.noteSlug);
+      }
       this.tracer?.endSession(this.session.noteSlug);
     }
     const view = this.getReactView();
@@ -259,7 +263,8 @@ export default class SocraticNoteTutorPlugin extends Plugin {
         await this.tutoringFlow.resumeSession();
       }
     } else if (choice === 'restart') {
-      await this.sessionManager.deleteSession(slug);
+      await this.sessionManager.archiveSession(slug);
+      await this.sessionManager.clearCurrentSession(slug);
     }
   }
 
@@ -292,6 +297,10 @@ export default class SocraticNoteTutorPlugin extends Plugin {
   }
 
   async startNewSession(): Promise<void> {
+    if (this.session && this.session.messages.length > 0) {
+      await this.sessionManager.archiveSession(this.session.noteSlug);
+      await this.sessionManager.clearCurrentSession(this.session.noteSlug);
+    }
     this.session = null;
     const view = this.getReactView();
     if (view) {
