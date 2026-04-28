@@ -89,6 +89,8 @@ export interface TranslationMap {
   // Selection tutoring
   askAboutSelection: string;
   explainSelectionPhase: string;
+  // Session history
+  currentSessionLabel: string;
 }
 
 const en: TranslationMap = {
@@ -175,6 +177,7 @@ const en: TranslationMap = {
   copyFail: 'Copy failed',
   askAboutSelection: 'Ask about selected text',
   explainSelectionPhase: 'Explaining selection',
+  currentSessionLabel: 'Current',
 };
 
 const zh: TranslationMap = {
@@ -261,6 +264,7 @@ const zh: TranslationMap = {
   copyFail: '复制失败',
   askAboutSelection: '询问选中的文本',
   explainSelectionPhase: '解释选文中',
+  currentSessionLabel: '当前',
 };
 
 const allTranslations: Record<Lang, TranslationMap> = { en, zh };

@@ -32,19 +32,19 @@ function SocraticAppInner() {
           {!isSessionActive && <EnergyRing />}
         </div>
         <div className="socratic-header-actions">
-          {isSessionActive && (
-            <span className="socratic-status">{t.viewStatusReady}</span>
-          )}
-          {isSessionActive && (
-            <button
-              className="socratic-btn socratic-btn-ghost"
-              onClick={onExitToMain}
-              disabled={isProcessing}
-              title={t.exitToMain}
-            >
-              {t.exitToMain}
-            </button>
-          )}
+          <span
+            className={`socratic-status ${isSessionActive ? 'socratic-status--visible' : 'socratic-status--hidden'}`}
+          >
+            {t.viewStatusReady}
+          </span>
+          <button
+            className={`socratic-btn socratic-btn-ghost ${isSessionActive ? 'socratic-header-btn--visible' : 'socratic-header-btn--hidden'}`}
+            onClick={onExitToMain}
+            disabled={isProcessing}
+            title={t.exitToMain}
+          >
+            {t.exitToMain}
+          </button>
           <button
             type="button"
             className="socratic-link"

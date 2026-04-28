@@ -42,8 +42,8 @@ interface SocraticContextType {
   showHistory: boolean;
   setShowHistory: (show: boolean) => void;
   listSessionHistory: () => Promise<SessionSummary[]>;
-  loadSessionFromHistory: (slug: string) => Promise<void>;
-  deleteSessionFromHistory: (slug: string) => Promise<void>;
+  loadSessionFromHistory: (slug: string, sessionId?: string) => Promise<void>;
+  deleteSessionFromHistory: (slug: string, sessionId?: string) => Promise<void>;
 }
 
 const SocraticContext = createContext<SocraticContextType | null>(null);
@@ -135,15 +135,15 @@ export function SocraticProvider({ view, children }: SocraticProviderProps) {
     return plugin.listSessionHistory();
   }, [plugin]);
 
-  const loadSessionFromHistoryFn = useCallback(async (slug: string) => {
+  const loadSessionFromHistoryFn = useCallback(async (slug: string, sessionId?: string) => {
     await withProcessing(async () => {
-      await plugin.loadSessionFromHistory(slug);
+      await plugin.loadSessionFromHistory(slug, sessionId);
       view.setShowHistory(false);
     }, 'Error loading session');
   }, [withProcessing, plugin, view]);
 
-  const deleteSessionFromHistoryFn = useCallback(async (slug: string) => {
-    await withProcessing(() => plugin.deleteSessionFromHistory(slug), 'Error deleting session');
+  const deleteSessionFromHistoryFn = useCallback(async (slug: string, sessionId?: string) => {
+    await withProcessing(() => plugin.deleteSessionFromHistory(slug, sessionId), 'Error deleting session');
   }, [withProcessing, plugin]);
 
   const contextValue: SocraticContextType = {

@@ -113,11 +113,18 @@ export function emptyMemoryCollection(): MemoryCollection {
 export interface SessionSummary {
   noteSlug: string;
   noteTitle: string;
+  sessionId: string;
   createdAt: number;
   updatedAt: number;
   conceptCount: number;
   completed: boolean;
   messageCount: number;
+}
+
+export interface NoteSessionGroup {
+  noteSlug: string;
+  noteTitle: string;
+  sessions: SessionSummary[];
 }
 
 export interface SocraticPluginSettings {

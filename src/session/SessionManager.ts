@@ -23,6 +23,10 @@ export class SessionManager {
     return normalizePath(`${this.basePath}/${noteSlug}`);
   }
 
+  private getHistoryDir(noteSlug: string): string {
+    return normalizePath(`${this.getSessionDir(noteSlug)}/history`);
+  }
+
   async sessionExists(noteSlug: string): Promise<boolean> {
     const dir = this.getSessionDir(noteSlug);
     try {
@@ -32,12 +36,18 @@ export class SessionManager {
     }
   }
 
-  async loadSession(noteSlug: string): Promise<SessionState | null> {
+  async loadSession(noteSlug: string, sessionId?: string): Promise<SessionState | null> {
     const dir = this.getSessionDir(noteSlug);
     try {
-      const exists = await this.vault.adapter.exists(`${dir}/session.json`);
+      let path: string;
+      if (sessionId && sessionId !== 'current') {
+        path = normalizePath(`${this.getHistoryDir(noteSlug)}/${sessionId}.json`);
+      } else {
+        path = `${dir}/session.json`;
+      }
+      const exists = await this.vault.adapter.exists(path);
       if (!exists) return null;
-      const content = await this.vault.adapter.read(`${dir}/session.json`);
+      const content = await this.vault.adapter.read(path);
       return JSON.parse(content) as SessionState;
     } catch {
       return null;
@@ -50,6 +60,28 @@ export class SessionManager {
     state.updatedAt = Date.now();
     await this.vault.adapter.write(`${dir}/session.json`, JSON.stringify(state, null, 2));
     await this.writeSessionMarkdown(dir, state);
+  }
+
+  async archiveSession(noteSlug: string): Promise<void> {
+    const dir = this.getSessionDir(noteSlug);
+    const sessionPath = `${dir}/session.json`;
+    try {
+      const exists = await this.vault.adapter.exists(sessionPath);
+      if (!exists) return;
+      const content = await this.vault.adapter.read(sessionPath);
+      const state = JSON.parse(content) as SessionState;
+      // Only archive if there are actual messages
+      if (!state.messages || state.messages.length === 0) return;
+      const historyDir = this.getHistoryDir(noteSlug);
+      await ensureDir(this.vault, historyDir);
+      const sessionId = Date.now().toString();
+      await this.vault.adapter.write(
+        normalizePath(`${historyDir}/${sessionId}.json`),
+        JSON.stringify(state, null, 2)
+      );
+    } catch {
+      // Silently fail archiving
+    }
   }
 
   async loadLearnerProfile(): Promise<LearnerProfile | null> {
@@ -89,11 +121,21 @@ export class SessionManager {
     await this.vault.adapter.write(`${dir}/${filename}`, html);
   }
 
-  async deleteSession(noteSlug: string): Promise<void> {
+  async deleteSession(noteSlug: string, sessionId?: string): Promise<void> {
+    // If sessionId provided and not 'current', delete from history
+    if (sessionId && sessionId !== 'current') {
+      const historyPath = normalizePath(`${this.getHistoryDir(noteSlug)}/${sessionId}.json`);
+      try {
+        await this.vault.adapter.remove(historyPath);
+      } catch {
+        // File may not exist
+      }
+      return;
+    }
+
+    // Otherwise delete the entire note session directory (current session + all history)
     const dir = this.getSessionDir(noteSlug);
     try {
-      // Obsidian's remove() cannot delete non-empty directories, so we must
-      // delete each file individually before removing the directory.
       const exists = await this.vault.adapter.exists(dir);
       if (!exists) return;
 
@@ -122,6 +164,30 @@ export class SessionManager {
         } catch {
           // File may not exist
         }
+      }
+
+      // Also delete history folder if it exists
+      try {
+        const historyDir = this.getHistoryDir(noteSlug);
+        const historyExists = await this.vault.adapter.exists(historyDir);
+        if (historyExists) {
+          const historyListing = await this.vault.adapter.list(historyDir);
+          if (historyListing && typeof historyListing === 'object') {
+            const historyFiles = Array.isArray(historyListing.files) ? historyListing.files : [];
+            for (const file of historyFiles) {
+              if (typeof file !== 'string') continue;
+              const filePath = file.startsWith(historyDir) ? file : normalizePath(`${historyDir}/${file}`);
+              try {
+                await this.vault.adapter.remove(filePath);
+              } catch {
+                // Ignore
+              }
+            }
+          }
+          await this.vault.adapter.remove(historyDir);
+        }
+      } catch {
+        // History dir may not exist
       }
 
       await this.vault.adapter.remove(dir);
@@ -172,8 +238,13 @@ export class SessionManager {
 
       const summaries: SessionSummary[] = [];
       for (const folderName of candidates) {
-        const summary = await this.tryReadSessionSummary(folderName);
-        if (summary) summaries.push(summary);
+        // Read current active session
+        const currentSummary = await this.tryReadSessionSummary(folderName);
+        if (currentSummary) summaries.push(currentSummary);
+
+        // Read archived history sessions
+        const historySummaries = await this.tryReadHistorySummaries(folderName);
+        summaries.push(...historySummaries);
       }
 
       return summaries.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -191,6 +262,7 @@ export class SessionManager {
       return {
         noteSlug: state.noteSlug,
         noteTitle: state.noteTitle,
+        sessionId: 'current',
         createdAt: state.createdAt,
         updatedAt: state.updatedAt,
         conceptCount: state.concepts.length,
@@ -199,6 +271,48 @@ export class SessionManager {
       };
     } catch {
       return null;
+    }
+  }
+
+  private async tryReadHistorySummaries(folderName: string): Promise<SessionSummary[]> {
+    const historyDir = normalizePath(`${this.basePath}/${folderName}/history`);
+    try {
+      const exists = await this.vault.adapter.exists(historyDir);
+      if (!exists) return [];
+
+      const listing = await this.vault.adapter.list(historyDir);
+      if (!listing || typeof listing !== 'object') return [];
+
+      const files = Array.isArray(listing.files) ? listing.files : [];
+      const summaries: SessionSummary[] = [];
+
+      for (const file of files) {
+        if (typeof file !== 'string') continue;
+        const fileName = file.replace(/\\/g, '/').split('/').pop() || '';
+        if (!fileName.endsWith('.json')) continue;
+        const sessionId = fileName.replace(/\.json$/, '');
+        const filePath = file.startsWith(historyDir) ? file : normalizePath(`${historyDir}/${file}`);
+        try {
+          const raw = await this.vault.adapter.read(filePath);
+          const state = JSON.parse(raw) as SessionState;
+          summaries.push({
+            noteSlug: state.noteSlug,
+            noteTitle: state.noteTitle,
+            sessionId,
+            createdAt: state.createdAt,
+            updatedAt: state.updatedAt,
+            conceptCount: state.concepts.length,
+            completed: state.completed,
+            messageCount: state.messages.length,
+          });
+        } catch {
+          // Skip unreadable files
+        }
+      }
+
+      return summaries;
+    } catch {
+      return [];
     }
   }
 

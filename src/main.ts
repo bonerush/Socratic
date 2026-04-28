@@ -82,6 +82,20 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       })
     );
 
+    this.registerEvent(
+      this.app.workspace.on('editor-menu', (menu, editor) => {
+        if (!editor.somethingSelected()) return;
+        const selection = editor.getSelection().trim();
+        if (!selection) return;
+        menu.addItem((item) => {
+          item
+            .setTitle(this.t.askAboutSelection)
+            .setIcon('brain')
+            .onClick(() => this.startTutoringWithSelection(selection));
+        });
+      })
+    );
+
     this.addSettingTab(new SocraticSettingTab(this.app, this));
 
     if (this.app.workspace.layoutReady) {
@@ -286,6 +300,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
             return;
           }
         } else {
+          await this.sessionManager.archiveSession(slug);
           await this.sessionManager.deleteSession(slug);
         }
       }
@@ -342,10 +357,10 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     return this.sessionManager.listSessions();
   }
 
-  async loadSessionFromHistory(slug: string): Promise<void> {
+  async loadSessionFromHistory(slug: string, sessionId?: string): Promise<void> {
     const view = this.getReactView();
     if (!view) return;
-    const loaded = await this.sessionManager.loadSession(slug);
+    const loaded = await this.sessionManager.loadSession(slug, sessionId);
     if (!loaded) {
       view.showError(this.t.sessionNotFound || 'Session not found');
       return;
@@ -355,9 +370,9 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     view.updateProgress(this.session);
   }
 
-  async deleteSessionFromHistory(slug: string): Promise<void> {
-    await this.sessionManager.deleteSession(slug);
-    if (this.session?.noteSlug === slug) {
+  async deleteSessionFromHistory(slug: string, sessionId?: string): Promise<void> {
+    await this.sessionManager.deleteSession(slug, sessionId);
+    if (this.session?.noteSlug === slug && (!sessionId || sessionId === 'current')) {
       this.session = null;
       const view = this.getReactView();
       if (view) {
@@ -724,6 +739,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       await this.generateSessionOutputs();
       await this.updateLearnerProfile();
       await this.sessionManager.saveSession(this.session!.noteSlug, this.session!);
+      await this.sessionManager.archiveSession(this.session!.noteSlug);
     }, this.t.finalizeFailed);
   }
 
