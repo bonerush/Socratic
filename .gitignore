@@ -24,3 +24,6 @@ data.json
 # Claude Code internal files
 .claude/
 claude-code/
+
+
+reference/
