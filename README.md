@@ -1,90 +1,310 @@
-# Obsidian Sample Plugin
+# Socratic Note Tutor
 
-This is a sample plugin for Obsidian (https://obsidian.md).
+> 基于 Obsidian 的苏格拉底式 AI 导师插件，运用大语言模型（LLM）与 Bloom 2-Sigma 教学法，通过启发式提问引导你进行深度学习。
 
-This project uses TypeScript to provide type checking and documentation.
-The repo depends on the latest plugin API (obsidian.d.ts) in TypeScript Definition format, which contains TSDoc comments describing what it does.
+---
 
-This sample plugin demonstrates some of the basic functionality the plugin API can do.
-- Adds a ribbon icon, which shows a Notice when clicked.
-- Adds a command "Open modal (simple)" which opens a Modal.
-- Adds a plugin setting tab to the settings page.
-- Registers a global click event and output 'click' to the console.
-- Registers a global interval which logs 'setInterval' to the console.
+## 目录
 
-## First time developing plugins?
+- [项目简介](#项目简介)
+- [核心功能](#核心功能)
+- [项目结构](#项目结构)
+- [安装指南](#安装指南)
+- [使用方法](#使用方法)
+- [配置说明](#配置说明)
+- [技术架构](#技术架构)
+- [开发构建](#开发构建)
+- [许可证](#许可证)
 
-Quick starting guide for new plugin devs:
+---
 
-- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
-- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
-- Install NodeJS, then run `npm i` in the command line under your repo folder.
-- Run `npm run dev` to compile your plugin from `main.ts` to `main.js`.
-- Make changes to `main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
-- Reload Obsidian to load the new version of your plugin.
-- Enable plugin in settings window.
-- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
+## 项目简介
 
-## Releasing new releases
+**Socratic Note Tutor** 是一款 Obsidian 插件，它将你的笔记内容转化为个性化的苏格拉底式辅导课程。插件不会直接给出答案，而是通过一系列精心设计的提问，引导你自己发现知识盲点、梳理概念脉络，并最终达到真正的掌握（Mastery）。
 
-- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
-- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
-- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
-- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
-- Publish the release.
+插件深度融合了以下教育理念：
 
-> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
-> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
+- **苏格拉底提问法**：只问不答，激发主动思考
+- **Bloom 2-Sigma 效应**：一对一针对性辅导，显著提升学习效果
+- **掌握学习（Mastery Learning）**：每个概念必须达到设定阈值才算真正掌握
+- **间隔重复（Spaced Repetition）**：自动安排复习，对抗遗忘曲线
 
-## Adding your plugin to the community plugin list
+---
 
-- Check the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
-- Publish an initial version.
-- Make sure you have a `README.md` file in the root of your repo.
-- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
+## 核心功能
 
-## How to use
+### 1. 智能概念提取与知识图谱
+打开任意一篇笔记并点击「开始辅导」，插件会自动分析笔记内容，提取出 5-15 个核心概念，并按依赖关系排序，生成可视化的学习路线图（Roadmap）。
 
-- Clone this repo.
-- Make sure your NodeJS is at least v16 (`node --version`).
-- `npm i` or `yarn` to install dependencies.
-- `npm run dev` to start compilation in watch mode.
+### 2. 苏格拉底式对话教学
+针对每个概念，AI 导师会通过多轮对话进行引导：
+- **诊断阶段**：先了解你对该主题的已有认知
+- **教学阶段**：通过开放式问题或选择题逐步引导
+- **掌握检测**：每轮对话后自动评估掌握程度（4 维度评估）
+- **练习任务**：掌握后布置应用型练习，巩固知识
 
-## Manually installing the plugin
+### 3. 四维度掌握评估
+系统从以下四个维度评估你对概念的掌握程度：
+- **正确性（Correctness）**：回答是否准确
+- **解释深度（Explanation Depth）**：能否用自己的话清晰解释
+- **新颖应用（Novel Application）**：能否迁移到新场景
+- **概念辨析（Concept Discrimination）**：能否区分相似概念
 
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
+默认掌握阈值为 **80%**，可在设置中调整。
 
-## Improve code quality with eslint
-- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code. 
-- This project already has eslint preconfigured, you can invoke a check by running`npm run lint`
-- Together with a custom eslint [plugin](https://github.com/obsidianmd/eslint-plugin) for Obsidan specific code guidelines.
-- A GitHub action is preconfigured to automatically lint every commit on all branches.
+### 4. 间隔重复复习
+对已掌握的概念，系统会根据艾宾浩斯遗忘曲线自动安排复习：
+- 初次掌握后 1 天复习
+- 每次答对，复习间隔翻倍
+- 答错则缩短间隔，针对性强化
 
-## Funding URL
+### 5. 会话历史与断点续学
+所有辅导会话自动保存到本地。你可以：
+- 随时查看某篇笔记的历史会话
+- 切换笔记时自动检测未完成会话，选择继续或重新开始
+- 会话完成后自动生成学习总结报告
 
-You can include funding URLs where people who use your plugin can financially support it.
+### 6. 学习者画像（Learner Profile）
+插件会长期追踪你的学习轨迹，构建个性化画像：
+- 擅长与薄弱的概念领域
+- 常见的认知误区模式
+- 自我评估校准历史
+- 长期记忆提取
 
-The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
+### 7. 多语言支持
+内置中英文双语界面，支持：
+- 手动切换语言
+- 根据笔记内容自动检测语言
+- 整个辅导流程（包括 AI 提问）均使用对应语言
 
-```json
-{
-    "fundingUrl": "https://buymeacoffee.com"
-}
+### 8. 选文提问
+在笔记中选中任意一段文字，右键选择「询问选中的文本」，即可针对该片段进行专项辅导，无需完整阅读整篇笔记。
+
+### 9. 调试追踪
+开启调试模式后，插件会详细记录每一次 LLM 调用、引擎阶段切换和提示词内容，以 JSONL 格式保存到指定目录，便于排查问题或优化提示词。
+
+---
+
+## 项目结构
+
+```
+.
+├── src/
+│   ├── main.ts                 # 插件入口，生命周期管理
+│   ├── types.ts                # 核心类型定义（概念、会话、设置等）
+│   ├── settings.ts             # 插件设置面板
+│   ├── templates.ts            # 学习路线图 & 总结报告 HTML 模板
+│   ├── core/
+│   │   └── TutoringFlow.ts     # 辅导流程编排（会话生命周期）
+│   ├── engine/
+│   │   ├── SocraticEngine.ts   # 苏格拉底引擎（对话策略、阶段管理）
+│   │   ├── ResponseParser.ts   # LLM 响应解析器
+│   │   └── ResponseHealer.ts   # 响应修复（空内容、格式错误等容错）
+│   ├── llm/
+│   │   ├── LLMService.ts       # LLM API 调用服务（OpenAI 兼容）
+│   │   ├── PromptBuilder.ts    # 提示词构建器
+│   │   └── tools.ts            # Function Calling 工具定义
+│   ├── session/
+│   │   ├── SessionManager.ts   # 会话持久化管理
+│   │   └── ...                 # 记忆提取、学习者画像等
+│   ├── ui/
+│   │   ├── ReactSocraticView.ts # Obsidian View 封装
+│   │   └── react/              # React UI 组件
+│   │       ├── SocraticApp.tsx
+│   │       ├── SocraticContext.tsx
+│   │       └── components/     # 消息气泡、欢迎屏、历史记录等
+│   ├── i18n/
+│   │   └── translations.ts     # 中英文翻译表
+│   ├── utils/                  # 通用工具函数
+│   ├── debug/                  # 调试追踪器
+│   └── memory/                 # 记忆系统
+├── manifest.json               # Obsidian 插件清单
+├── styles.css                  # 插件样式
+├── esbuild.config.mjs          # 构建配置
+├── package.json
+├── tsconfig.json
+└── README.md
 ```
 
-If you have multiple URLs, you can also do:
+---
 
-```json
-{
-    "fundingUrl": {
-        "Buy Me a Coffee": "https://buymeacoffee.com",
-        "GitHub Sponsor": "https://github.com/sponsors",
-        "Patreon": "https://www.patreon.com/"
-    }
-}
+## 安装指南
+
+### 方法一：手动安装（推荐）
+
+1. 前往 [GitHub Releases](https://github.com/bonerush/Socratic/releases) 页面，下载最新版本的发布包
+2. 解压后得到 `main.js`、`manifest.json`、`styles.css` 三个文件
+3. 在你的 Obsidian 仓库中创建文件夹：`.obsidian/plugins/socratic-note-tutor/`
+4. 将三个文件复制到该文件夹中
+5. 重启 Obsidian，或进入「设置 → 社区插件」中启用 **Socratic Note Tutor**
+
+### 方法二：通过 BRAT 安装
+
+1. 安装 [BRAT](https://github.com/TfTHacker/obsidian42-brat) 插件
+2. 打开 BRAT 设置，点击「Add Beta plugin」
+3. 输入仓库地址：`bonerush/Socratic`
+4. 点击「Add Plugin」，BRAT 会自动下载并安装
+
+### 方法三：从源码构建
+
+```bash
+# 克隆仓库
+git clone https://github.com/bonerush/Socratic.git
+cd Socratic
+
+# 安装依赖
+npm install
+
+# 开发模式（监听文件变化并自动编译）
+npm run dev
+
+# 生产构建
+npm run build
 ```
 
-## API Documentation
+构建完成后，将生成的 `main.js`、`manifest.json`、`styles.css` 复制到你的 Obsidian 插件目录即可。
 
-See https://docs.obsidian.md
+---
+
+## 使用方法
+
+### 快速开始
+
+1. **配置 API**：首次使用前，进入「设置 → Socratic Note Tutor Settings」，填写你的 LLM API 地址和密钥
+   - 支持 OpenAI、Anthropic、以及任何兼容 OpenAI API 格式的服务商
+   - 默认模型为 `gpt-4`，可根据需要更换
+
+2. **打开辅导面板**：
+   - 点击左侧边栏的 **大脑图标**（🧠）
+   - 或使用命令面板（Cmd/Ctrl + P）搜索「Open Socratic Tutor」
+
+3. **开始辅导**：
+   - 打开任意一篇笔记
+   - 点击「开始辅导」按钮
+   - AI 会先进行诊断提问，随后提取概念并展开引导式学习
+
+4. **回答问题**：
+   - 在输入框中输入你的思考
+   - 若遇到选择题，点击选项即可
+   - 每轮结束后系统会评估你的掌握程度
+
+### 常用操作
+
+| 操作 | 方式 |
+|------|------|
+| 开始辅导当前笔记 | 点击「开始辅导」或使用命令面板 |
+| 针对选中文字提问 | 选中文本 → 右键「询问选中的文本」 |
+| 查看学习路线图 | 点击「查看学习路线」（会话中生成） |
+| 查看会话历史 | 点击右上角的「会话历史」 |
+| 新建会话 | 点击「新建会话」以清空当前进度 |
+| 返回主界面 | 点击「返回主界面」结束当前会话 |
+
+### 笔记切换自动检测
+
+当你在学习过程中切换到另一篇已有未完成会话的笔记时，插件会自动弹窗询问：
+- **继续**：恢复之前的进度
+- **重新开始**：清空历史，从头开始
+- **取消**：保持当前状态
+
+---
+
+## 配置说明
+
+进入「设置 → Socratic Note Tutor Settings」可进行以下配置：
+
+| 配置项 | 说明 | 默认值 |
+|--------|------|--------|
+| API 接口地址 | LLM 服务的 API 端点 | `https://api.openai.com/v1/chat/completions` |
+| API 密钥 | 你的 API Key | 空 |
+| 模型 | 使用的模型名称 | `gpt-4` |
+| 禁用工具调用 | 若 API 代理不支持 function calling，启用此项 | 关闭 |
+| 语言偏好 | 界面与辅导语言（自动/英文/中文） | 自动 |
+| 会话存储路径 | 会话数据的本地存储路径 | 仓库根目录下的 `.socratic-sessions` |
+| 掌握阈值 | 标记为已掌握所需的最低分数（50-100） | 80 |
+| 每会话最大概念数 | 从单篇笔记提取的最大概念数（3-30） | 15 |
+| 调试模式 | 启用 LLM 调用与引擎步骤的追踪 | 关闭 |
+| 调试追踪路径 | 追踪文件存储目录 | `sessionStoragePath/debug` |
+
+---
+
+## 技术架构
+
+### 数据流
+
+```
+Obsidian Note
+     │
+     ▼
+┌─────────────────┐
+│  TutoringFlow   │  ← 会话生命周期管理（开始/恢复/结束）
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ SocraticEngine  │  ← 对话策略引擎（阶段切换、提示词组装）
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐     ┌─────────────┐
+│  LLMService     │────▶│   LLM API   │
+│ (OpenAI 兼容)   │◄────│             │
+└─────────────────┘     └─────────────┘
+         │
+         ▼
+┌─────────────────┐
+│ SessionManager  │  ← 本地持久化（会话、路线图、学习者画像）
+└─────────────────┘
+```
+
+### 辅导阶段状态机
+
+```
+[诊断] ──▶ [概念提取] ──▶ [教学] ──▶ [掌握检测] ──▶ [练习]
+   ▲          │              │           │
+   └──────────┴──────────────┴───────────┘ (未完成则循环)
+```
+
+### 核心设计原则
+
+- **不可变性（Immutability）**：所有状态更新返回新对象，避免副作用
+- **小文件高内聚**：模块按功能域拆分，单个文件不超过 800 行
+- **显式错误处理**：每层都有 try-catch，不向用户隐藏异常
+- **LLM 容错**：空内容、格式错误、工具调用失败均有降级策略
+
+---
+
+## 开发构建
+
+```bash
+# 安装依赖
+npm install
+
+# 开发模式（监听 + 热编译）
+npm run dev
+
+# 生产构建（类型检查 + 压缩）
+npm run build
+
+# 代码检查
+npm run lint
+
+# 版本升级（自动更新 manifest.json 和 versions.json）
+npm run version
+```
+
+### 技术栈
+
+- **TypeScript** + **React 19**（UI 层）
+- **esbuild**（打包，支持 JSX）
+- **Obsidian API**（插件生命周期、文件系统、编辑器交互）
+- **Vitest**（单元测试）
+
+---
+
+## 许可证
+
+本项目采用 0-BSD 许可证，可自由使用、修改和分发。
+
+---
+
+> **提示**：苏格拉底式学习的核心在于「主动思考」。插件设计的初衷不是替代你的学习过程，而是像一位耐心的导师，通过提问帮助你发现自己尚未意识到的理解盲区。请享受这段探索之旅！
