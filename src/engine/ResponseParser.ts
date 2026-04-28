@@ -131,9 +131,9 @@ export class ResponseParser {
       misconceptionDetected: null,
     };
 
+    const a = args;
     switch (toolName) {
-      case 'provide_guidance': {
-        const a = args as Record<string, unknown>;
+      case 'provide_guidance':
         return {
           ...base,
           content: String(a.content ?? ''),
@@ -150,9 +150,7 @@ export class ResponseParser {
             ? { misconception: a.misconception, rootCause: typeof a.rootCause === 'string' ? a.rootCause : '' }
             : null,
         };
-      }
-      case 'assess_mastery': {
-        const a = args as Record<string, unknown>;
+      case 'assess_mastery':
         return {
           ...base,
           content: String(a.content ?? ''),
@@ -164,24 +162,19 @@ export class ResponseParser {
             conceptDiscrimination: a.conceptDiscrimination === true,
           },
         };
-      }
-      case 'extract_concepts': {
-        const a = args as Record<string, unknown>;
+      case 'extract_concepts':
         return {
           ...base,
           content: '',
           concepts: Array.isArray(a.concepts) ? a.concepts : undefined,
         };
-      }
       case 'send_info':
-      default: {
-        const a = args as Record<string, unknown>;
+      default:
         return {
           ...base,
           content: String(a.content ?? ''),
           conceptId: typeof a.conceptId === 'string' ? a.conceptId : null,
         };
-      }
     }
   }
 

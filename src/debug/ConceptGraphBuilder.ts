@@ -82,14 +82,16 @@ export class ConceptGraphBuilder {
       const concept = conceptMap.get(id);
       if (!concept || concept.dependencies.length === 0) {
         depths.set(id, 0);
+        visited.delete(id);
         return 0;
       }
 
       const maxParentDepth = Math.max(
-        ...concept.dependencies.map((dep) => getDepth(dep, new Set(visited))),
+        ...concept.dependencies.map((dep) => getDepth(dep, visited)),
       );
       const depth = maxParentDepth + 1;
       depths.set(id, depth);
+      visited.delete(id);
       return depth;
     };
 

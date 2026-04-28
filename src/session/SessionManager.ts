@@ -60,8 +60,8 @@ export class SessionManager {
   async saveSession(noteSlug: string, state: SessionState): Promise<void> {
     const dir = this.getSessionDir(noteSlug);
     await ensureDir(this.vault, dir);
-    state.updatedAt = Date.now();
-    await this.vault.adapter.write(`${dir}/session.json`, JSON.stringify(state, null, 2));
+    const next = { ...state, updatedAt: Date.now() };
+    await this.vault.adapter.write(`${dir}/session.json`, JSON.stringify(next, null, 2));
     await this.exporter.exportSessionMarkdown(dir, state);
   }
 

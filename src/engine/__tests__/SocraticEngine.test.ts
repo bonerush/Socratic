@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SocraticEngine } from '../SocraticEngine';
+import { ResponseParser } from '../ResponseParser';
 import { LLMService } from '../../llm/LLMService';
 import type { SessionState, TutorMessage, SocraticPluginSettings } from '../../types';
 
@@ -85,11 +86,11 @@ function countRoundsForConcept(session: SessionState, conceptId: string): number
   }).length;
 }
 
-describe('SocraticEngine.parseStructuredResponse', () => {
-  const engine = new SocraticEngine(createMockLLM());
+describe('ResponseParser.parseStructuredResponse', () => {
+  const parser = new ResponseParser();
 
   it('parses valid provide_guidance tool call with question', () => {
-    const parsed = (engine as any).parseStructuredResponse({
+    const parsed = parser.parseStructuredResponse({
       content: '',
       toolCalls: [{
         id: '1',
@@ -113,7 +114,7 @@ describe('SocraticEngine.parseStructuredResponse', () => {
   it('falls back to message.content when tool call content is empty (the "..." root cause)', () => {
     // Some models call the tool correctly but leave the "content" parameter
     // empty, while putting the actual text in message.content.
-    const parsed = (engine as any).parseStructuredResponse({
+    const parsed = parser.parseStructuredResponse({
       content: 'What is a type in TypeScript?',
       toolCalls: [{
         id: '1',
@@ -134,7 +135,7 @@ describe('SocraticEngine.parseStructuredResponse', () => {
   });
 
   it('parses valid provide_guidance tool call with multiple-choice', () => {
-    const parsed = (engine as any).parseStructuredResponse({
+    const parsed = parser.parseStructuredResponse({
       content: '',
       toolCalls: [{
         id: '1',
@@ -157,7 +158,7 @@ describe('SocraticEngine.parseStructuredResponse', () => {
   });
 
   it('falls back to JSON in content when no tool calls', () => {
-    const parsed = (engine as any).parseStructuredResponse({
+    const parsed = parser.parseStructuredResponse({
       content: JSON.stringify({
         tool: 'provide_guidance',
         content: 'Explain generics.',
@@ -171,7 +172,7 @@ describe('SocraticEngine.parseStructuredResponse', () => {
   });
 
   it('falls back to JSON inside markdown code block', () => {
-    const parsed = (engine as any).parseStructuredResponse({
+    const parsed = parser.parseStructuredResponse({
       content: '```json\n' + JSON.stringify({
         tool: 'provide_guidance',
         content: 'What is inference?',
@@ -183,13 +184,13 @@ describe('SocraticEngine.parseStructuredResponse', () => {
   });
 
   it('returns send_info fallback on completely empty response', () => {
-    const parsed = (engine as any).parseStructuredResponse({ content: '' });
+    const parsed = parser.parseStructuredResponse({ content: '' });
     expect(parsed.tool).toBe('send_info');
     expect(parsed.content.length).toBeGreaterThan(0);
   });
 
   it('does not override extract_concepts empty content with message.content', () => {
-    const parsed = (engine as any).parseStructuredResponse({
+    const parsed = parser.parseStructuredResponse({
       content: 'some random text',
       toolCalls: [{
         id: '1',
@@ -208,7 +209,7 @@ describe('SocraticEngine.parseStructuredResponse', () => {
   });
 
   it('handles empty content in provide_guidance tool call (the "..." bug)', () => {
-    const parsed = (engine as any).parseStructuredResponse({
+    const parsed = parser.parseStructuredResponse({
       content: '',
       toolCalls: [{
         id: '1',
@@ -229,11 +230,11 @@ describe('SocraticEngine.parseStructuredResponse', () => {
   });
 });
 
-describe('SocraticEngine.buildTutorMessageFromParsed', () => {
-  const engine = new SocraticEngine(createMockLLM());
+describe('ResponseParser.buildTutorMessageFromParsed', () => {
+  const parser = new ResponseParser();
 
   it('creates question for open-ended guidance', () => {
-    const msg = (engine as any).buildTutorMessageFromParsed({
+    const msg = parser.buildTutorMessageFromParsed('test-session', {
       tool: 'provide_guidance',
       content: 'What is a type?',
       questionType: 'open-ended',
@@ -250,7 +251,7 @@ describe('SocraticEngine.buildTutorMessageFromParsed', () => {
   });
 
   it('creates feedback when questionType is missing', () => {
-    const msg = (engine as any).buildTutorMessageFromParsed({
+    const msg = parser.buildTutorMessageFromParsed('test-session', {
       tool: 'provide_guidance',
       content: 'Good explanation.',
       questionType: null,
@@ -265,7 +266,7 @@ describe('SocraticEngine.buildTutorMessageFromParsed', () => {
   });
 
   it('creates multiple-choice question with options', () => {
-    const msg = (engine as any).buildTutorMessageFromParsed({
+    const msg = parser.buildTutorMessageFromParsed('test-session', {
       tool: 'provide_guidance',
       content: 'Pick one:',
       questionType: 'multiple-choice',

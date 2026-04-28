@@ -33,8 +33,11 @@ export class DebugReporter {
       graphReport.isolatedConcepts.length +
       graphReport.missingDependencies.length +
       messageReport.duplicateMessages.length +
+      messageReport.suspiciouslyShortAnswers.length +
+      messageReport.unusuallyLongAnswers.length +
       messageReport.consecutiveUserMessages.length +
-      messageReport.emptyOrPlaceholderMessages.length;
+      messageReport.emptyOrPlaceholderMessages.length +
+      messageReport.responseTimeGaps.length;
 
     lines.push(`## Summary`);
     lines.push(`- Status: ${totalIssues === 0 ? 'All Clear' : `${totalIssues} issue(s) found`}`);

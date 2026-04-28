@@ -80,9 +80,10 @@ export class ResponseHealer {
     jsonMode = true,
   ): Promise<LLMResponse> {
     const mutableMessages = [...messages];
+    let response!: LLMResponse;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      const response = await withRetry(() =>
+      response = await withRetry(() =>
         this.llm.chat(systemPrompt, mutableMessages, temperature, maxTokens, tools, jsonMode)
       );
       const content = response.content?.trim() || '';
@@ -116,9 +117,7 @@ export class ResponseHealer {
     }
 
     // Return last response even if malformed — caller will use parse fallback
-    return await withRetry(() =>
-      this.llm.chat(systemPrompt, mutableMessages, temperature, maxTokens, tools, jsonMode)
-    );
+    return response;
   }
 
   /**
@@ -148,7 +147,7 @@ export class ResponseHealer {
     const isContentEmpty = parsed.tool !== 'extract_concepts' && !parsed.content?.trim();
     const isLeakage = containsSystemPromptLeakage(parsed.content || '');
     const looksLikeQuestion = /[?？]/.test(parsed.content || '');
-    const impliesMultipleChoice = /以下哪个|哪一个|请选择|选项|方案|选择/i.test(parsed.content || '');
+    const impliesMultipleChoice = /以下哪个|哪一个|请选择|选项|方案|选择|which|choose|select|option|alternative/i.test(parsed.content || '');
     const isMissingOptions = looksLikeQuestion && impliesMultipleChoice && !parsed.options && parsed.questionType !== 'open-ended';
 
     if (isExtractEmpty || isContentEmpty || isLeakage || isMissingOptions) {

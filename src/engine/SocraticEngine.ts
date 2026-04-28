@@ -3,6 +3,7 @@ import { LLMService } from '../llm/LLMService';
 import { PromptBuilder, assembleBlocks, type SystemPromptContext } from '../llm/PromptBuilder';
 import { getToolDefinitionsForPhase } from '../llm/tools';
 import { generateId, formatInterval } from '../utils/common';
+import { countRoundsForConcept } from '../utils/session';
 import type { Tracer } from '../debug/Tracer';
 import { ResponseParser, type ExtractedConcept } from './ResponseParser';
 import { ResponseHealer } from './ResponseHealer';
@@ -84,13 +85,7 @@ export class SocraticEngine {
       return 'practice';
     }
     if (current) {
-      const rounds = session.messages.filter(m => {
-        if (m.role !== 'tutor') return false;
-        // Only count questions explicitly tagged with this conceptId.
-        // Diagnosis-phase questions have no conceptId and must NOT count
-        // toward a concept's teaching rounds.
-        return m.question?.conceptId === current.id;
-      }).length;
+      const rounds = countRoundsForConcept(session.messages, current.id);
       if (rounds >= 3 && !this.hasRecentMasteryCheck(session, current.id)) {
         return 'mastery-check';
       }
@@ -216,10 +211,9 @@ export class SocraticEngine {
         (response) => this.parser.parseStructuredResponse(response),
       );
 
-      const tutorMsg = this.parser.buildTutorMessageFromParsed(this.sessionSlug, parsed);
+      let tutorMsg = this.parser.buildTutorMessageFromParsed(this.sessionSlug, parsed);
 
-      this.ensureContent(tutorMsg);
-      return tutorMsg;
+      return this.withContentFallback(tutorMsg);
     });
   }
 
@@ -247,19 +241,23 @@ export class SocraticEngine {
         (response) => this.parser.parseStructuredResponse(response),
       );
 
-      const tutorMsg = this.parser.buildTutorMessageFromParsed(this.sessionSlug, parsed);
+      let tutorMsg = this.parser.buildTutorMessageFromParsed(this.sessionSlug, parsed);
 
       // Guard: in diagnosis phase the model MUST use provide_guidance.
       // If it returns extract_concepts or another wrong tool, treat it as
       // malformed and inject a safe default so the user sees a real question.
       if (parsed.tool !== 'provide_guidance') {
-        tutorMsg.content = '你对这个主题已经有哪些了解？请简单描述一下，我会根据你的回答提出下一个问题。';
-        tutorMsg.type = 'question';
-        tutorMsg.question = {
-          id: generateId(),
-          conceptId: '',
-          type: 'open-ended',
-          prompt: tutorMsg.content,
+        const fallbackContent = '你对这个主题已经有哪些了解？请简单描述一下，我会根据你的回答提出下一个问题。';
+        tutorMsg = {
+          ...tutorMsg,
+          content: fallbackContent,
+          type: 'question',
+          question: {
+            id: generateId(),
+            conceptId: '',
+            type: 'open-ended',
+            prompt: fallbackContent,
+          },
         };
       }
 
@@ -268,20 +266,25 @@ export class SocraticEngine {
       // what to answer.
       const hasQuestionMark = /[?？]/.test(tutorMsg.content);
       if (!hasQuestionMark && tutorMsg.type !== 'info') {
-        tutorMsg.content += '\n\n你对这个主题已经有哪些了解？请简单描述一下。';
+        const appendedContent = tutorMsg.content + '\n\n你对这个主题已经有哪些了解？请简单描述一下。';
         if (!tutorMsg.question) {
-          tutorMsg.question = {
-            id: generateId(),
-            conceptId: '',
-            type: 'open-ended',
-            prompt: tutorMsg.content,
+          tutorMsg = {
+            ...tutorMsg,
+            content: appendedContent,
+            type: 'question',
+            question: {
+              id: generateId(),
+              conceptId: '',
+              type: 'open-ended',
+              prompt: appendedContent,
+            },
           };
-          tutorMsg.type = 'question';
+        } else {
+          tutorMsg = { ...tutorMsg, content: appendedContent };
         }
       }
 
-      this.ensureContent(tutorMsg);
-      return tutorMsg;
+      return this.withContentFallback(tutorMsg);
     });
   }
 
@@ -371,15 +374,18 @@ Requirements:
         (response) => this.parser.parseStructuredResponse(response),
       );
 
-      const tutorMsg = this.parser.buildTutorMessageFromParsed(this.sessionSlug, parsed);
+      let tutorMsg = this.parser.buildTutorMessageFromParsed(this.sessionSlug, parsed);
 
       // Inject current conceptId if LLM omitted it, so round-counting works reliably.
       if (tutorMsg.question && !tutorMsg.question.conceptId && session.currentConceptId) {
-        tutorMsg.question.conceptId = session.currentConceptId;
+        tutorMsg = {
+          ...tutorMsg,
+          question: { ...tutorMsg.question, conceptId: session.currentConceptId },
+        };
       }
 
       if (!tutorMsg.content?.trim() && !tutorMsg.question) {
-        tutorMsg.content = '...';
+        tutorMsg = { ...tutorMsg, content: '...' };
       }
 
       return tutorMsg;
@@ -410,16 +416,19 @@ Requirements:
         (response) => this.parser.parseStructuredResponse(response),
       );
 
-      const message = this.parser.buildTutorMessageFromParsed(this.sessionSlug, parsed);
+      let message = this.parser.buildTutorMessageFromParsed(this.sessionSlug, parsed);
 
       // Inject conceptId if the LLM omitted it, so round-counting works reliably.
       if (message.question && !message.question.conceptId) {
-        message.question.conceptId = conceptId;
+        message = {
+          ...message,
+          question: { ...message.question, conceptId },
+        };
       }
 
       // Mark as mastery check question so the engine can detect pending checks.
       if (message.question) {
-        message.question.isMasteryCheck = true;
+        message = { ...message, question: { ...message.question, isMasteryCheck: true } };
       }
 
       return message;
@@ -492,7 +501,7 @@ CRITICAL: 你必须调用 provide_guidance 工具。不要输出纯文本——�
         (response) => this.parser.parseStructuredResponse(response),
       );
 
-      const tutorMsg = this.parser.buildTutorMessageFromParsed(this.sessionSlug, parsed);
+      let tutorMsg = this.parser.buildTutorMessageFromParsed(this.sessionSlug, parsed);
 
       if (!tutorMsg.content?.trim() && !tutorMsg.question) {
         tutorMsg.content = '...';
@@ -523,7 +532,7 @@ CRITICAL: 你必须调用 provide_guidance 工具。不要输出纯文本——�
         (response) => this.parser.parseStructuredResponse(response),
       );
 
-      const tutorMsg = this.parser.buildTutorMessageFromParsed(this.sessionSlug, parsed);
+      let tutorMsg = this.parser.buildTutorMessageFromParsed(this.sessionSlug, parsed);
 
       if (!tutorMsg.content?.trim() && !tutorMsg.question) {
         tutorMsg.content = '...';
@@ -533,10 +542,10 @@ CRITICAL: 你必须调用 provide_guidance 工具。不要输出纯文本——�
     });
   }
 
-  updateMasteryFromCheck(session: SessionState, conceptId: string, dimensions: MasteryDimension, selfAssessment: SelfAssessmentLevel): { passed: boolean; newScore: number } {
-    const concept = session.concepts.find(c => c.id === conceptId);
-    if (!concept) return { passed: false, newScore: 0 };
-
+  updateMasteryFromCheck(
+    dimensions: MasteryDimension,
+    currentScore: number,
+  ): { passed: boolean; newScore: number } {
     const dimensionScore = [
       dimensions.correctness,
       dimensions.explanationDepth,
@@ -547,17 +556,15 @@ CRITICAL: 你必须调用 provide_guidance 工具。不要输出纯文本——�
     // Weight the new evaluation more heavily so strong performances reach
     // the mastery threshold faster. A perfect 100% on the first check
     // yields 85%, enough to pass the default 80% threshold.
-    concept.masteryScore = Math.round(concept.masteryScore * 0.15 + dimensionScore * 0.85);
-    concept.lastReviewTime = Date.now();
-    concept.selfAssessment = selfAssessment;
-
-    const passed = concept.masteryScore >= 80;
-    return { passed, newScore: concept.masteryScore };
+    const newScore = Math.round(currentScore * 0.15 + dimensionScore * 0.85);
+    const passed = newScore >= 80;
+    return { passed, newScore };
   }
 
-  private ensureContent(msg: TutorMessage, fallback = '...'): void {
+  private withContentFallback(msg: TutorMessage, fallback = '...'): TutorMessage {
     if (!msg.content?.trim() && !msg.question) {
-      msg.content = fallback;
+      return { ...msg, content: fallback };
     }
+    return msg;
   }
 }

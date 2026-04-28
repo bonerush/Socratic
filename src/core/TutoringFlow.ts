@@ -1,7 +1,7 @@
 import { Notice, type Vault } from 'obsidian';
 import type {
   SessionState, TutorMessage, SelfAssessmentLevel,
-  SessionSummary, SocraticPluginSettings,
+  SessionSummary, SocraticPluginSettings, ConceptState,
 } from '../types';
 import type { ReactSocraticView } from '../ui/ReactSocraticView';
 import type { SessionManager } from '../session/SessionManager';
@@ -113,7 +113,7 @@ export class TutoringFlow {
       view.setSessionActive(true);
 
       const msg = await this.engine.stepExplainSelection(this.session!, selection);
-      this.session!.messages.push(msg);
+      this.pushMessage(msg);
       view.addMessage(msg);
       await this.sessionManager.saveSession(this.session!.noteSlug, this.session!);
     } catch (error) {
@@ -254,7 +254,7 @@ export class TutoringFlow {
   private async runDiagnosis(): Promise<void> {
     await this.withSessionView(async (view) => {
       const msg = await this.engine.stepDiagnosis(this.session!);
-      this.session!.messages.push(msg);
+      this.pushMessage(msg);
       view.addMessage(msg);
       view.updateProgress(this.session!);
       await this.sessionManager.saveSession(this.session!.noteSlug, this.session!);
@@ -277,8 +277,10 @@ export class TutoringFlow {
         selfAssessment: null,
       }));
 
-      this.session!.concepts = conceptStates;
-      this.session!.conceptOrder = concepts.map(c => c.id);
+      this.produceSession({
+        concepts: conceptStates,
+        conceptOrder: concepts.map(c => c.id),
+      });
 
       const roadmapHtml = generateRoadmapHtml(this.session!);
       await this.sessionManager.saveRoadmap(this.session!.noteSlug, roadmapHtml);
@@ -291,7 +293,7 @@ export class TutoringFlow {
         content: this.t.conceptTransition,
         timestamp: Date.now(),
       };
-      this.session!.messages.push(transitionMsg);
+      this.pushMessage(transitionMsg);
       view.addMessage(transitionMsg);
 
       await this.continueTutoring(recursionDepth + 1);
@@ -309,23 +311,7 @@ export class TutoringFlow {
 
     try {
       if (this.session.concepts.length === 0) {
-        const tutorQuestions = this.session.messages.filter(
-          m => m.role === 'tutor' && (m.type === 'question' || m.type === 'feedback')
-        ).length;
-        const userAnswers = this.session.messages.filter(
-          m => m.role === 'user'
-        ).length;
-
-        const diagnosisRound = tutorQuestions + 1;
-        if (diagnosisRound < 2 || userAnswers < tutorQuestions) {
-          const msg = await this.engine.stepDiagnosis(this.session, diagnosisRound);
-          this.session.messages.push(msg);
-          view.addMessage(msg);
-          await this.sessionManager.saveSession(this.session.noteSlug, this.session);
-          return;
-        }
-
-        await this.extractConceptsAndBuildRoadmap(recursionDepth);
+        await this.handleDiagnosisOrExtract(view, recursionDepth);
         return;
       }
 
@@ -341,8 +327,8 @@ export class TutoringFlow {
       if (!this.session.currentConceptId) {
         const next = unmastered[0];
         if (next) {
-          this.session.currentConceptId = next.id;
-          next.status = 'learning';
+          this.produceConcept(next.id, { status: 'learning' });
+          this.produceSession({ currentConceptId: next.id });
         }
       }
 
@@ -355,44 +341,24 @@ export class TutoringFlow {
         c => c.id === this.session!.currentConceptId
       );
 
-      if (!currentConcept) {
-        this.session.currentConceptId = null;
-        await this.continueTutoring(recursionDepth + 1);
-        return;
-      }
-
-      if (currentConcept.status === 'mastered') {
-        this.session.currentConceptId = null;
+      if (!currentConcept || currentConcept.status === 'mastered') {
+        this.produceSession({ currentConceptId: null });
         await this.continueTutoring(recursionDepth + 1);
         return;
       }
 
       const rounds = this.getConceptRounds(currentConcept.id);
       if (rounds >= 3) {
-        const lastTutorMsg = [...this.session.messages].reverse().find(m => m.role === 'tutor');
-        const justChecked = lastTutorMsg?.type === 'feedback' &&
-          (lastTutorMsg.content.startsWith('Mastery:') || lastTutorMsg.content.startsWith('掌握度：'));
-        if (!justChecked) {
-          const lastMsg = this.session.messages[this.session.messages.length - 1];
-          const pendingMasteryCheck = lastTutorMsg?.question?.isMasteryCheck ?? false;
-          if (pendingMasteryCheck && lastMsg?.role === 'user') {
-            await this.runMasteryCheckAssess(currentConcept.id);
-          } else {
-            await this.runMasteryCheck(currentConcept.id);
-          }
-          return;
-        }
+        const handled = await this.handleMasteryCheckFlow(currentConcept.id, view);
+        if (handled) return;
       }
 
       view.updateProgress(this.session);
 
-      const lastMsg = this.session.messages[this.session.messages.length - 1];
-      if (lastMsg && lastMsg.role === 'tutor' && (lastMsg.type === 'question' || lastMsg.question !== undefined)) {
-        return;
-      }
+      if (this.hasPendingQuestion(this.session)) return;
 
       const msg = await this.engine.stepAskQuestion(this.session);
-      this.session.messages.push(msg);
+      this.pushMessage(msg);
       view.addMessage(msg);
 
       const isEmpty = (!msg.content?.trim() || msg.content.trim() === '...') && !msg.question;
@@ -408,13 +374,51 @@ export class TutoringFlow {
     }
   }
 
+  private async handleDiagnosisOrExtract(view: ReactSocraticView, recursionDepth: number): Promise<void> {
+    const tutorQuestions = this.session!.messages.filter(
+      m => m.role === 'tutor' && (m.type === 'question' || m.type === 'feedback')
+    ).length;
+    const userAnswers = this.session!.messages.filter(m => m.role === 'user').length;
+
+    const diagnosisRound = tutorQuestions + 1;
+    if (diagnosisRound < 2 || userAnswers < tutorQuestions) {
+      const msg = await this.engine.stepDiagnosis(this.session!, diagnosisRound);
+      this.pushMessage(msg);
+      view.addMessage(msg);
+      await this.sessionManager.saveSession(this.session!.noteSlug, this.session!);
+      return;
+    }
+
+    await this.extractConceptsAndBuildRoadmap(recursionDepth);
+  }
+
+  private hasPendingQuestion(session: SessionState): boolean {
+    const lastMsg = session.messages[session.messages.length - 1];
+    return !!lastMsg && lastMsg.role === 'tutor' && (lastMsg.type === 'question' || lastMsg.question !== undefined);
+  }
+
+  private async handleMasteryCheckFlow(conceptId: string, _view: ReactSocraticView): Promise<boolean> {
+    const lastTutorMsg = [...this.session!.messages].reverse().find(m => m.role === 'tutor');
+    const justChecked = lastTutorMsg?.type === 'feedback' && lastTutorMsg.question?.isMasteryCheck;
+    if (justChecked) return false;
+
+    const lastMsg = this.session!.messages[this.session!.messages.length - 1];
+    const pendingMasteryCheck = lastTutorMsg?.question?.isMasteryCheck ?? false;
+    if (pendingMasteryCheck && lastMsg?.role === 'user') {
+      await this.runMasteryCheckAssess(conceptId);
+    } else {
+      await this.runMasteryCheck(conceptId);
+    }
+    return true;
+  }
+
   private async runMasteryCheck(conceptId: string): Promise<void> {
     await this.withSessionView(async (view) => {
       const concept = this.session!.concepts.find(c => c.id === conceptId);
       if (!concept) return;
 
       const msg = await this.engine.stepMasteryCheck(this.session!, conceptId);
-      this.session!.messages.push(msg);
+      this.pushMessage(msg);
       view.addMessage(msg);
 
       view.updateProgress(this.session!);
@@ -428,18 +432,24 @@ export class TutoringFlow {
       if (!concept) return;
 
       const { message: msg, dimensions } = await this.engine.stepAssessMastery(this.session!, conceptId);
-      this.session!.messages.push(msg);
+      this.pushMessage(msg);
       view.addMessage(msg);
 
       const selfAssessment = await view.showSelfAssessment();
 
+      const currentScore = concept.masteryScore;
       const { passed, newScore } = this.engine.updateMasteryFromCheck(
-        this.session!, conceptId, dimensions, selfAssessment
+        dimensions, currentScore
       );
 
       if (passed && newScore >= this.settings.masteryThreshold) {
-        concept.status = 'mastered';
-        this.session!.currentConceptId = null;
+        this.produceConcept(conceptId, {
+          status: 'mastered',
+          masteryScore: newScore,
+          lastReviewTime: Date.now(),
+          selfAssessment,
+        });
+        this.produceSession({ currentConceptId: null });
         const masteryMsg: TutorMessage = {
           id: generateId(),
           role: 'tutor',
@@ -447,12 +457,17 @@ export class TutoringFlow {
           content: `${concept.name} mastered! (${newScore}%)`,
           timestamp: Date.now(),
         };
-        this.session!.messages.push(masteryMsg);
+        this.pushMessage(masteryMsg);
         view.addMessage(masteryMsg);
         await this.runPracticeTask(concept.id);
       } else {
-        this.session!.currentConceptId = conceptId;
-        concept.status = 'learning';
+        this.produceSession({ currentConceptId: conceptId });
+        this.produceConcept(conceptId, {
+          status: 'learning',
+          masteryScore: newScore,
+          lastReviewTime: Date.now(),
+          selfAssessment,
+        });
         const feedbackMsg: TutorMessage = {
           id: generateId(),
           role: 'tutor',
@@ -460,7 +475,7 @@ export class TutoringFlow {
           content: `掌握度：${newScore}%（基于正确性、解释深度、新颖应用、概念区分四个维度的评估，达到 80% 即可掌握该概念）。`,
           timestamp: Date.now(),
         };
-        this.session!.messages.push(feedbackMsg);
+        this.pushMessage(feedbackMsg);
         view.addMessage(feedbackMsg);
       }
 
@@ -474,7 +489,7 @@ export class TutoringFlow {
   private async runPracticeTask(conceptId: string): Promise<void> {
     await this.withSessionView(async (view) => {
       const msg = await this.engine.stepPracticeTask(this.session!, conceptId);
-      this.session!.messages.push(msg);
+      this.pushMessage(msg);
       view.addMessage(msg);
 
       view.updateProgress(this.session!);
@@ -488,14 +503,14 @@ export class TutoringFlow {
       if (!fullConcept) return;
 
       const msg = await this.engine.stepReviewQuestion(this.session!, fullConcept);
-      this.session!.messages.push(msg);
+      this.pushMessage(msg);
       view.addMessage(msg);
     }, this.t.reviewFailed);
   }
 
   private async finalizeSession(): Promise<void> {
     await this.withSessionView(async () => {
-      this.session!.completed = true;
+      this.produceSession({ completed: true });
 
       const memories = this.sessionManager.memoryExtractor.extractFromSession(this.session!);
       for (const memory of memories) {
@@ -568,6 +583,24 @@ export class TutoringFlow {
     return this.session ? countRoundsForConcept(this.session.messages, conceptId) : 0;
   }
 
+  // ── Immutable update helpers ───────────────────────────────────────────────
+
+  private produceSession(patch: Partial<SessionState>): void {
+    const current = this.session;
+    if (!current) return;
+    this.session = { ...current, ...patch };
+  }
+
+  private produceConcept(conceptId: string, patch: Partial<ConceptState>): void {
+    this.produceSession({
+      concepts: this.session!.concepts.map(c => c.id === conceptId ? { ...c, ...patch } : c),
+    });
+  }
+
+  private pushMessage(msg: TutorMessage): void {
+    this.produceSession({ messages: [...this.session!.messages, msg] });
+  }
+
   private async withSessionView(
     fn: (view: ReactSocraticView) => Promise<void>,
     errorLabel: string,
@@ -597,7 +630,7 @@ export class TutoringFlow {
       view.showError(this.t.noNote);
       return null;
     }
-    const lang = this.resolveLang(this.settings.language, note.content);
+    const lang = resolveLang(this.settings.language, note.content);
     this.updateViewLanguage(lang);
     view.setLanguageFromContent(this.settings.language, note.content);
     const slug = slugify(note.title);
@@ -632,19 +665,16 @@ export class TutoringFlow {
       content,
       timestamp: Date.now(),
     };
-    this.session.messages.push(msg);
+    this.pushMessage(msg);
     this.getReactView()?.addMessage(msg);
   }
 
   private updateLanguageFromText(text: string): void {
     if (this.settings.language !== 'auto') return;
-    const detected = this.resolveLang('auto', text);
+    const detected = resolveLang('auto', text);
     if (detected !== this.currentLang) {
       this.updateViewLanguage(detected);
     }
   }
 
-  private resolveLang(setting: string, text: string): Lang {
-    return resolveLang(setting, text);
-  }
 }

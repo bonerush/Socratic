@@ -96,7 +96,7 @@ export class SessionDebugger {
       if (
         msg.role === 'tutor' &&
         msg.type === 'feedback' &&
-        (msg.content.startsWith('Mastery:') || msg.content.startsWith('掌握度：'))
+        msg.question?.isMasteryCheck
       ) {
         const subsequentMessages = state.messages.slice(i + 1);
         const statusChange = subsequentMessages.find(

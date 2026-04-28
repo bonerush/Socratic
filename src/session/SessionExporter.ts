@@ -25,7 +25,8 @@ export class SessionExporter {
       const timeStr = concept.lastReviewTime
         ? new Date(concept.lastReviewTime).toLocaleDateString()
         : '-';
-      md += `| ${concept.name} | ${concept.status} | ${concept.masteryScore}% | ${timeStr} |\n`;
+      const name = concept.name.replace(/\|/g, '\\|');
+      md += `| ${name} | ${concept.status} | ${concept.masteryScore}% | ${timeStr} |\n`;
     }
 
     if (state.misconceptions.length > 0) {
@@ -33,7 +34,9 @@ export class SessionExporter {
       md += `| Misconception | Root Cause | Resolved |\n`;
       md += `|--------------|------------|----------|\n`;
       for (const m of state.misconceptions) {
-        md += `| ${m.misconception} | ${m.inferredRootCause} | ${m.resolved ? 'Yes' : 'No'} |\n`;
+        const misconception = m.misconception.replace(/\|/g, '\\|');
+        const rootCause = m.inferredRootCause.replace(/\|/g, '\\|');
+        md += `| ${misconception} | ${rootCause} | ${m.resolved ? 'Yes' : 'No'} |\n`;
       }
     }
 
