@@ -375,7 +375,7 @@ export class Tracer {
       if (!(await adapter.exists(this.storagePath))) return [];
       const listing = await adapter.list(this.storagePath);
       if (!listing || typeof listing !== 'object' || !Array.isArray(listing.files)) return [];
-      return (listing.files as string[]).filter((f: string) => f.endsWith('.jsonl'));
+      return listing.files.filter((f) => typeof f === 'string' && f.endsWith('.jsonl'));
     } catch {
       return [];
     }

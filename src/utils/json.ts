@@ -83,7 +83,7 @@ export function extractArrayField(
 ): unknown[] | undefined {
 	for (const name of fieldNames) {
 		const value = parsed[name];
-		if (Array.isArray(value)) return value;
+		if (Array.isArray(value)) return value as unknown[];
 	}
 	return undefined;
 }

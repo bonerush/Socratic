@@ -1,4 +1,4 @@
-import type { SessionState, ConceptState } from '../types';
+import type { ConceptState } from '../types';
 import { getToolDescriptions } from './tools';
 import {
   IDENTITY_BLOCK_CONTENT,

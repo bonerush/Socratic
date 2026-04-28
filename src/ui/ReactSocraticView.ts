@@ -58,7 +58,7 @@ export class ReactSocraticView extends ItemView {
   }
 
   getDisplayText(): string {
-    return 'Socratic Tutor';
+    return 'Socratic tutor';
   }
 
   getIcon(): string {

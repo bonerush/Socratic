@@ -18,11 +18,11 @@ export function WelcomeScreen(): React.ReactElement {
         {before}
         <span
           className="socratic-hero-action-word"
-          onClick={onStartTutoring}
+          onClick={() => void onStartTutoring()}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault();
-              onStartTutoring();
+              void onStartTutoring();
             }
           }}
           role="button"

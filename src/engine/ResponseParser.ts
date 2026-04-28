@@ -136,7 +136,7 @@ export class ResponseParser {
       case 'provide_guidance':
         return {
           ...base,
-          content: String(a.content ?? ''),
+          content: typeof a.content === 'string' ? a.content : '',
           questionType:
             a.questionType === 'multiple-choice'
               ? ('multiple-choice' as const)
@@ -153,7 +153,7 @@ export class ResponseParser {
       case 'assess_mastery':
         return {
           ...base,
-          content: String(a.content ?? ''),
+          content: typeof a.content === 'string' ? a.content : '',
           conceptId: typeof a.conceptId === 'string' ? a.conceptId : null,
           masteryCheck: {
             correctness: a.correctness === true,
@@ -172,7 +172,7 @@ export class ResponseParser {
       default:
         return {
           ...base,
-          content: String(a.content ?? ''),
+          content: typeof a.content === 'string' ? a.content : '',
           conceptId: typeof a.conceptId === 'string' ? a.conceptId : null,
         };
     }
@@ -250,7 +250,7 @@ export class ResponseParser {
     const lines = content.split('\n');
     const options: string[] = [];
     const nonOptionLines: string[] = [];
-    const optionRegex = /^\s*([A-Da-d])[\.、。:：,，!！?？）\)\]\}\-\s]+\s*(.+)$/;
+    const optionRegex = /^\s*([A-Da-d])[.、。:：,，!！?？）)\]}-\s]+\s*(.+)$/;
     const simpleRegex = /^\s*([A-Da-d])\s+(.+)$/;
 
     for (const line of lines) {
@@ -276,7 +276,7 @@ export class ResponseParser {
   }
 
   private stripOptionLinesFromContent(content: string): string {
-    const optionRegex = /^\s*([A-Da-d])[\.、。:：,，!！?？）\)\]\}\-\s]+\s*(.+)$/;
+    const optionRegex = /^\s*([A-Da-d])[.、。:：,，!！?？）)\]}-\s]+\s*(.+)$/;
     const simpleRegex = /^\s*([A-Da-d])\s+(.+)$/;
 
     const lines = content.split('\n');
@@ -308,14 +308,15 @@ export class ResponseParser {
 
     const concepts = parsed.concepts ?? parsed.data ?? parsed.result;
     if (Array.isArray(concepts) && concepts.length > 0) {
-      return concepts.map((c) => ({
-        id: String((c as Record<string, unknown>).id ?? ''),
-        name: String((c as Record<string, unknown>).name ?? ''),
-        description: String((c as Record<string, unknown>).description ?? ''),
-        dependencies: Array.isArray((c as Record<string, unknown>).dependencies)
-          ? (c as Record<string, unknown>).dependencies as string[]
-          : [],
-      })).filter((c) => c.id && c.name);
+      return concepts.map((c) => {
+        const record = c as Record<string, unknown>;
+        return {
+          id: typeof record.id === 'string' ? record.id : '',
+          name: typeof record.name === 'string' ? record.name : '',
+          description: typeof record.description === 'string' ? record.description : '',
+          dependencies: Array.isArray(record.dependencies) ? (record.dependencies as string[]) : [],
+        };
+      }).filter((c) => c.id && c.name);
     }
     return [];
   }

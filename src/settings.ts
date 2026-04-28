@@ -17,7 +17,7 @@ export class SocraticSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl('h2', { text: this.t.settingsTitle });
+    new Setting(containerEl).setName(this.t.settingsTitle).setHeading();
 
     new Setting(containerEl)
       .setName(this.t.apiEndpointLabel)
@@ -36,7 +36,7 @@ export class SocraticSettingTab extends PluginSettingTab {
       .addText(text => {
         text.inputEl.type = 'password';
         text
-          .setPlaceholder('sk-...')
+          .setPlaceholder('Sk-...')
           .setValue(this.plugin.settings.apiKey)
           .onChange(async value => {
             this.plugin.settings.apiKey = value;
@@ -48,7 +48,7 @@ export class SocraticSettingTab extends PluginSettingTab {
       .setName(this.t.modelLabel)
       .setDesc(this.t.modelDesc)
       .addText(text => text
-        .setPlaceholder('gpt-4')
+        .setPlaceholder('Gpt-4')
         .setValue(this.plugin.settings.model)
         .onChange(async value => {
           this.plugin.settings.model = value;

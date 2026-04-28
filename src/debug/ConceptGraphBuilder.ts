@@ -43,7 +43,6 @@ export class ConceptGraphBuilder {
   }
 
   private findIsolatedConcepts(concepts: ConceptState[]): string[] {
-    const allIds = new Set(concepts.map((c) => c.id));
     const dependents = new Set<string>();
     for (const c of concepts) {
       for (const dep of c.dependencies) {

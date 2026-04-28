@@ -1,4 +1,4 @@
-import type { SessionState, ConceptState, TutorMessage } from '../types';
+import type { SessionState, ConceptState } from '../types';
 
 export interface SessionDiagnostic {
   healthy: boolean;

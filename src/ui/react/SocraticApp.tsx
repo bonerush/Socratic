@@ -22,7 +22,7 @@ export function SocraticApp({ view }: SocraticAppProps) {
 }
 
 function SocraticAppInner() {
-  const { t, isSessionActive, isProcessing, dialogState, resolveSelfAssessment, resolveSessionResume, resolveNoteSwitchResume, showHistory, setShowHistory, onExitToMain } = useSocratic();
+  const { t, isSessionActive, isProcessing, dialogState, resolveSelfAssessment, resolveSessionResume, showHistory, setShowHistory, onExitToMain } = useSocratic();
 
   return (
     <div className="socratic-view">
@@ -39,7 +39,7 @@ function SocraticAppInner() {
           </span>
           <button
             className={`socratic-btn socratic-btn-ghost ${isSessionActive ? 'socratic-header-btn--visible' : 'socratic-header-btn--hidden'}`}
-            onClick={onExitToMain}
+            onClick={() => void onExitToMain()}
             disabled={isProcessing}
             title={t.exitToMain}
           >

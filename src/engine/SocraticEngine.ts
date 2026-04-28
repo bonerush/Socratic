@@ -1,4 +1,4 @@
-import { type SessionState, type TutorMessage, type ConceptState, type SelfAssessmentLevel, type MasteryDimension } from '../types';
+import { type SessionState, type TutorMessage, type ConceptState, type MasteryDimension } from '../types';
 import { LLMService } from '../llm/LLMService';
 import { PromptBuilder, assembleBlocks, type SystemPromptContext } from '../llm/PromptBuilder';
 import { getToolDefinitionsForPhase } from '../llm/tools';
@@ -129,8 +129,8 @@ export class SocraticEngine {
       // to prevent the LLM from mistaking it as prompt injection.
       .filter(m => !(m.role === 'tutor' && m.type === 'feedback' &&
         (m.content.startsWith('Mastery:') || m.content.startsWith('掌握度：'))))
-      .map(m => ({
-        role: (m.role === 'tutor' ? 'assistant' : 'user') as 'user' | 'assistant',
+      .map((m): { role: 'user' | 'assistant'; content: string } => ({
+        role: m.role === 'tutor' ? 'assistant' : 'user',
         content: m.content,
       }));
 

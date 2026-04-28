@@ -3,10 +3,25 @@ import type { SocraticPluginSettings } from '../types';
 import type { ToolDefinition, ToolCall } from './tools';
 import type { Tracer } from '../debug/Tracer';
 
-interface LLMMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-  tool_calls?: ToolCall[];
+interface OpenAIChoice {
+  message?: {
+    content?: string;
+    tool_calls?: Array<{
+      id: string;
+      type?: string;
+      function: { name: string; arguments: string };
+    }>;
+  };
+  finish_reason?: string;
+}
+
+interface OpenAIResponse {
+  choices: OpenAIChoice[];
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
 }
 
 export interface LLMResponse {
@@ -109,18 +124,17 @@ export class LLMService {
         throw: true,
       });
 
-      const data = response.json;
+      const data = response.json as OpenAIResponse;
       const choice = data.choices[0];
+      if (!choice) {
+        throw new Error('LLM API returned empty choices array');
+      }
 
       // Handle tool_calls response (OpenAI function calling)
       if (choice.message?.tool_calls && choice.message.tool_calls.length > 0) {
         const result: LLMResponse = {
           content: choice.message.content || '',
-          toolCalls: choice.message.tool_calls.map((tc: {
-            id: string;
-            type?: string;
-            function: { name: string; arguments: string };
-          }) => ({
+          toolCalls: choice.message.tool_calls.map((tc) => ({
             id: tc.id,
             type: 'function' as const,
             function: {
@@ -143,7 +157,7 @@ export class LLMService {
 
       // Standard content response
       const result: LLMResponse = {
-        content: choice.message.content || '',
+        content: choice.message?.content || '',
         finishReason: choice.finish_reason || 'stop',
         usage: data.usage
           ? {

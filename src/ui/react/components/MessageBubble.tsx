@@ -31,11 +31,29 @@ function getCopyText(message: TutorMessage): string {
  * - Question options appear below the bubble content.
  */
 export function MessageBubble({ message }: MessageBubbleProps) {
-  const { onSelectOption, isProcessing, app, viewComponent, t } = useSocratic();
+  const { onSelectOption, isProcessing, app, viewComponent, t, messages } = useSocratic();
   const isUser = message.role === 'user';
   const isSystem = message.type === 'system';
   const hasQuestion =
     message.question && message.question.options && message.question.options.length > 0;
+
+  // Determine if this question has already been answered (e.g. after remount).
+  const answeredIndex = React.useMemo(() => {
+    if (!hasQuestion) return null;
+    const msgIndex = messages.findIndex((m) => m.id === message.id);
+    if (msgIndex === -1) return null;
+    for (let i = msgIndex + 1; i < messages.length; i++) {
+      const m = messages[i];
+      if (!m) continue;
+      if (m.role === 'user' && m.type === 'choice-result') {
+        if (message.question?.options) {
+          return message.question.options.findIndex((opt) => opt === m.content);
+        }
+      }
+      if (m.role === 'tutor' && (m.type === 'question' || m.question)) break;
+    }
+    return null;
+  }, [messages, message.id, message.question, hasQuestion]);
 
   // Fresh messages get the streaming animation on first mount.
   const [shouldStream] = useState(() => {
@@ -69,7 +87,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       <div className="socratic-message-bubble">
         <button
           className="socratic-message-copy"
-          onClick={handleCopy}
+          onClick={() => void handleCopy()}
           title={t.copyLabel}
           aria-label={t.copyLabel}
         >
@@ -90,8 +108,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         {hasQuestion && message.question && (
           <OptionsBar
             question={message.question}
-            onSelect={(option, index) => onSelectOption(option, index)}
+            onSelect={(option, index) => void onSelectOption(option, index)}
             disabled={isProcessing}
+            answeredIndex={answeredIndex}
           />
         )}
       </div>

@@ -58,7 +58,7 @@ export class TraceAnalyzer {
       .filter((e) => e.type === 'llm-error')
       .map((e) => ({
         timestamp: e.timestamp,
-        message: String(e.data.message ?? 'Unknown error'),
+        message: typeof e.data.message === 'string' ? e.data.message : 'Unknown error',
       }));
 
     const selfCorrectionCount = events.filter((e) => e.type === 'self-correction').length;

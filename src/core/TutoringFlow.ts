@@ -112,10 +112,10 @@ export class TutoringFlow {
       view.clearMessages();
       view.setSessionActive(true);
 
-      const msg = await this.engine.stepExplainSelection(this.session!, selection);
+      const msg = await this.engine.stepExplainSelection(this.session, selection);
       this.pushMessage(msg);
       view.addMessage(msg);
-      await this.sessionManager.saveSession(this.session!.noteSlug, this.session!);
+      await this.sessionManager.saveSession(this.session.noteSlug, this.session);
     } catch (error) {
       view.showError(`${this.t.startFailed}: ${getErrorMessage(error)}`);
     }

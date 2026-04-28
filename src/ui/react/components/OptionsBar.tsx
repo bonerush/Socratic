@@ -1,11 +1,11 @@
 import React from 'react';
-import { useSocratic } from '../SocraticContext';
 import type { Question } from '../../../types';
 
 interface OptionsBarProps {
   question: Question;
   onSelect: (option: string, index: number) => void;
   disabled: boolean;
+  answeredIndex?: number | null;
 }
 
 /**
@@ -16,7 +16,7 @@ interface OptionsBarProps {
 function cleanOptionText(text: string, index: number): string {
   const expectedLabel = String.fromCharCode(65 + index);
   const patterns = [
-    new RegExp(`^[${expectedLabel}${expectedLabel.toLowerCase()}][\.、。:：,，!！?？）\\)\\]\\}\\-\\s]+\\s*`),
+    new RegExp(`^[${expectedLabel}${expectedLabel.toLowerCase()}][.、。:：,，!！?？）\\)\\]\\}\\-\\s]+\\s*`),
     new RegExp(`^[${expectedLabel}${expectedLabel.toLowerCase()}]\\s+`),
   ];
   for (const p of patterns) {
@@ -25,12 +25,9 @@ function cleanOptionText(text: string, index: number): string {
   return text;
 }
 
-export function OptionsBar({ question, onSelect, disabled }: OptionsBarProps) {
-  const [selectedIndex, setSelectedIndex] = React.useState<number | null>(null);
-
+export function OptionsBar({ question, onSelect, disabled, answeredIndex }: OptionsBarProps) {
   const handleClick = (option: string, index: number) => {
-    if (disabled || selectedIndex !== null) return;
-    setSelectedIndex(index);
+    if (disabled || answeredIndex !== null) return;
     onSelect(option, index);
   };
 
@@ -39,14 +36,14 @@ export function OptionsBar({ question, onSelect, disabled }: OptionsBarProps) {
   return (
     <div className="socratic-options">
       {question.options.map((option, index) => {
-        const isSelected = selectedIndex === index;
+        const isSelected = answeredIndex === index;
         const cleaned = cleanOptionText(option, index);
         return (
           <button
             key={index}
             className={`socratic-option-btn ${isSelected ? 'socratic-option-btn-selected' : ''}`}
             onClick={() => handleClick(option, index)}
-            disabled={disabled || selectedIndex !== null}
+            disabled={disabled || answeredIndex !== null}
           >
             <span className="socratic-option-label">{String.fromCharCode(65 + index)}</span>
             <span className="socratic-option-text">{cleaned}</span>

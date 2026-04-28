@@ -23,15 +23,16 @@ export function Composer() {
     const text = value.trim();
     if (!text || isProcessing) return;
     setValue('');
-    onSendMessage(text);
+    void onSendMessage(text);
   };
 
   const adjustHeight = () => {
     const el = textareaRef.current;
-    if (el) {
-      el.style.height = 'auto';
-      el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-    }
+    if (!el) return;
+    // Reset height to measure natural scrollHeight, then cap at 200px.
+    // eslint-disable-next-line obsidianmd/no-static-styles-assignment
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   };
 
   return (

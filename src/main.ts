@@ -6,9 +6,9 @@ import { LLMService } from './llm/LLMService';
 import { SocraticEngine } from './engine/SocraticEngine';
 import {
   VIEW_TYPE_SOCRATIC, DEFAULT_SETTINGS,
-  type SessionState, type SelfAssessmentLevel, type SessionSummary,
+  type SessionState, type SelfAssessmentLevel, type SessionSummary, type SocraticPluginSettings,
 } from './types';
-import { getTranslations, resolveLang, type Lang } from './i18n/translations';
+import { getTranslations, type Lang } from './i18n/translations';
 import { Tracer } from './debug/Tracer';
 import { TutoringFlow } from './core/TutoringFlow';
 import { slugify } from './utils/common';
@@ -39,14 +39,14 @@ export default class SocraticNoteTutorPlugin extends Plugin {
 
     this.registerView(VIEW_TYPE_SOCRATIC, (leaf) => new ReactSocraticView(leaf, this));
 
-    this.addRibbonIcon('brain', 'Open Socratic Tutor', () => {
-      this.activateView();
+    this.addRibbonIcon('brain', 'Open socratic tutor', () => {
+      void this.activateView();
     });
 
     this.addCommand({
       id: 'open-socratic-tutor',
-      name: 'Open Socratic Tutor',
-      callback: () => this.activateView(),
+      name: 'Open socratic tutor',
+      callback: () => void this.activateView(),
     });
 
     this.addCommand({
@@ -55,7 +55,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       checkCallback: (checking) => {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (view) {
-          if (!checking) this.startTutoring();
+          if (!checking) void this.startTutoring();
           return true;
         }
         return false;
@@ -68,7 +68,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       checkCallback: (checking) => {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (view && view.editor.somethingSelected()) {
-          if (!checking) this.startTutoringWithSelection(view.editor.getSelection());
+          if (!checking) void this.startTutoringWithSelection(view.editor.getSelection());
           return true;
         }
         return false;
@@ -77,7 +77,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
 
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', (leaf) => {
-        this.handleActiveLeafChange(leaf);
+        void this.handleActiveLeafChange(leaf);
       })
     );
 
@@ -98,18 +98,20 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     this.addSettingTab(new SocraticSettingTab(this.app, this));
 
     if (this.app.workspace.layoutReady) {
-      this.activateView();
+      void this.activateView();
     } else {
-      this.app.workspace.onLayoutReady(() => this.activateView());
+      this.app.workspace.onLayoutReady(() => void this.activateView());
     }
   }
 
   onunload(): void {
-    this.app.workspace.detachLeavesOfType(VIEW_TYPE_SOCRATIC);
+    // Intentionally empty: do not detach leaves here, as that resets
+    // the leaf to its default location when the plugin is reloaded.
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const data = (await this.loadData()) as Partial<SocraticPluginSettings>;
+    this.settings = { ...DEFAULT_SETTINGS, ...data };
   }
 
   async saveSettings(): Promise<void> {
@@ -175,7 +177,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
       await leaf.setViewState({ type: VIEW_TYPE_SOCRATIC, active: true });
     }
 
-    workspace.revealLeaf(leaf);
+    await workspace.revealLeaf(leaf);
   }
 
   updateViewLanguage(lang: Lang): void {

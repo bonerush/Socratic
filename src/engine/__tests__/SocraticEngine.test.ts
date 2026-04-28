@@ -1,8 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { SocraticEngine } from '../SocraticEngine';
 import { ResponseParser } from '../ResponseParser';
 import { LLMService } from '../../llm/LLMService';
 import type { SessionState, TutorMessage, SocraticPluginSettings } from '../../types';
+import type { ToolDefinition } from '../../llm/tools';
+
+interface EngineWithGetPhase {
+  getPhase(session: SessionState): string;
+}
 
 const DEFAULT_SETTINGS: SocraticPluginSettings = {
   apiKey: 'test-key',
@@ -16,6 +21,8 @@ const DEFAULT_SETTINGS: SocraticPluginSettings = {
   reviewIntervalBase: 86400,
   reviewIntervalMax: 604800,
   memoryStoragePath: '.socratic-sessions/.memories',
+  debugMode: false,
+  debugStoragePath: '.socratic-sessions/debug',
 };
 
 function createMockLLM(): LLMService {
@@ -287,7 +294,7 @@ describe('SocraticEngine.getPhase', () => {
 
   it('returns diagnosis when no concepts extracted', () => {
     const session = createEmptySession();
-    expect((engine as any).getPhase(session)).toBe('diagnosis');
+    expect((engine as unknown as EngineWithGetPhase).getPhase(session)).toBe('diagnosis');
   });
 
   it('returns teaching when concept has <3 rounds', () => {
@@ -295,7 +302,7 @@ describe('SocraticEngine.getPhase', () => {
     session.messages = [
       makeTutorQuestion('Q1?', 'ts-types'),
     ];
-    expect((engine as any).getPhase(session)).toBe('teaching');
+    expect((engine as unknown as EngineWithGetPhase).getPhase(session)).toBe('teaching');
   });
 
   it('returns mastery-check after 3 rounds', () => {
@@ -305,7 +312,7 @@ describe('SocraticEngine.getPhase', () => {
       makeTutorQuestion('Q2?', 'ts-types'),
       makeTutorQuestion('Q3?', 'ts-types'),
     ];
-    expect((engine as any).getPhase(session)).toBe('mastery-check');
+    expect((engine as unknown as EngineWithGetPhase).getPhase(session)).toBe('mastery-check');
   });
 
   it('returns teaching after mastery check if not mastered', () => {
@@ -316,7 +323,7 @@ describe('SocraticEngine.getPhase', () => {
       makeTutorQuestion('Q3?', 'ts-types'),
       makeTutorFeedback('Mastery: 50%'),
     ];
-    expect((engine as any).getPhase(session)).toBe('teaching');
+    expect((engine as unknown as EngineWithGetPhase).getPhase(session)).toBe('teaching');
   });
 
   it('returns practice after mastery check with recent mastery', () => {
@@ -328,7 +335,7 @@ describe('SocraticEngine.getPhase', () => {
       makeTutorQuestion('Q3?', 'ts-types'),
       makeTutorFeedback('Mastery: 90%'),
     ];
-    expect((engine as any).getPhase(session)).toBe('practice');
+    expect((engine as unknown as EngineWithGetPhase).getPhase(session)).toBe('practice');
   });
 });
 
@@ -412,7 +419,7 @@ describe('LLMService.request body construction', () => {
   it('does NOT set response_format when tools are present (the root cause of "...")', () => {
     // Verify the exact invariant used in LLMService.chat:
     // when tools exist, response_format must never be added.
-    const tools = [{ type: 'function', function: { name: 'provide_guidance', description: 'test', parameters: { type: 'object', properties: {}, required: [] } } }] as any;
+    const tools: ToolDefinition[] = [{ type: 'function', function: { name: 'provide_guidance', description: 'test', parameters: { type: 'object', properties: {}, required: [] } } }];
     const body: Record<string, unknown> = {
       model: 'gpt-4o-mini',
       messages: [{ role: 'system', content: 'test' }],

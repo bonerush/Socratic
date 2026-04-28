@@ -125,14 +125,14 @@ export function SessionHistory() {
                         <div className="socratic-history-actions">
                           <button
                             className="socratic-btn socratic-btn-primary"
-                            onClick={() => loadSessionFromHistory(session.noteSlug, session.sessionId === 'current' ? undefined : session.sessionId)}
+                            onClick={() => void loadSessionFromHistory(session.noteSlug, session.sessionId === 'current' ? undefined : session.sessionId)}
                             disabled={isProcessing}
                           >
                             {t.continueLabel}
                           </button>
                           <button
                             className="socratic-btn socratic-btn-danger"
-                            onClick={() => handleDelete(session.noteSlug, session.sessionId === 'current' ? undefined : session.sessionId)}
+                            onClick={() => void handleDelete(session.noteSlug, session.sessionId === 'current' ? undefined : session.sessionId)}
                             disabled={isProcessing}
                           >
                             {t.deleteLabel}

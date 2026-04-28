@@ -42,8 +42,6 @@ export function MarkdownRenderer({
       // Fallback to plain text on render failure (e.g. extremely malformed markdown).
       el.empty();
       el.setText(content);
-      // eslint-disable-next-line no-console
-      console.error('MarkdownRenderer.render failed', error);
     });
 
     return () => {
