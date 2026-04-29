@@ -3,6 +3,13 @@ import type { SocraticPluginSettings } from '../types';
 import type { ToolDefinition, ToolCall } from './tools';
 import type { Tracer } from '../debug/Tracer';
 
+export class CancelledError extends Error {
+	constructor(message = 'Request was cancelled') {
+		super(message);
+		this.name = 'CancelledError';
+	}
+}
+
 interface OpenAIChoice {
   message?: {
     content?: string;
@@ -39,6 +46,8 @@ export class LLMService {
   private settings: SocraticPluginSettings;
   private tracer: Tracer | null = null;
   private sessionSlug = 'unknown';
+  private currentRequestId = 0;
+  private cancelledRequestIds = new Set<number>();
 
   constructor(settings: SocraticPluginSettings) {
     this.settings = settings;
@@ -56,6 +65,10 @@ export class LLMService {
     this.sessionSlug = slug;
   }
 
+  cancel(): void {
+    this.cancelledRequestIds.add(this.currentRequestId);
+  }
+
   /**
    * Chat using pre-assembled system prompt string.
    * Prefer `chatWithBlocks` for new code — it keeps prompt construction declarative.
@@ -71,6 +84,8 @@ export class LLMService {
     if (!this.settings.apiKey) {
       throw new Error('API key not configured. Please set it in plugin settings.');
     }
+
+    const requestId = ++this.currentRequestId;
 
     const body: Record<string, unknown> = {
       model: this.settings.model,
@@ -124,6 +139,11 @@ export class LLMService {
         throw: true,
       });
 
+      if (this.cancelledRequestIds.has(requestId)) {
+        this.cancelledRequestIds.delete(requestId);
+        throw new CancelledError();
+      }
+
       const data = response.json as OpenAIResponse;
       const choice = data.choices[0];
       if (!choice) {
@@ -172,6 +192,9 @@ export class LLMService {
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
       this.tracer?.llmError(this.sessionSlug, err);
+      if (err instanceof CancelledError) {
+        throw err;
+      }
       throw new Error(`LLM API request failed: ${err.message}`);
     }
   }

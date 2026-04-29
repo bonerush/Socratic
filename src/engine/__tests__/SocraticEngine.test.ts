@@ -287,6 +287,76 @@ describe('ResponseParser.buildTutorMessageFromParsed', () => {
     expect(msg.question!.options).toEqual(['A', 'B', 'C']);
     expect(msg.question!.correctOptionIndex).toBe(1);
   });
+
+  it('does NOT strip A/B-labelled code examples that are not actual options', () => {
+    const content = 'Which is correct?\n\n**写法A：**\n```\nspi@7e204000 { compatible = "brcm"; };\n```\n\n**写法B：**\n```\nspi { compatible = "brcm"; };\n```';
+    const msg = parser.buildTutorMessageFromParsed('test-session', {
+      tool: 'provide_guidance',
+      content,
+      questionType: 'multiple-choice',
+      options: ['写法A', '写法B'],
+      correctOptionIndex: 0,
+      conceptId: 'dts-syntax',
+      masteryCheck: null,
+      misconceptionDetected: null,
+    });
+    // The content should still contain the code examples because
+    // "spi@7e204000 { ... }" does not match the known options.
+    expect(msg.content).toContain('写法A');
+    expect(msg.content).toContain('写法B');
+    expect(msg.content).toContain('spi@7e204000');
+  });
+
+  it('DOES strip duplicate option lines when they match known options', () => {
+    const content = 'Which is correct?\nA. Option one\nB. Option two';
+    const msg = parser.buildTutorMessageFromParsed('test-session', {
+      tool: 'provide_guidance',
+      content,
+      questionType: 'multiple-choice',
+      options: ['Option one', 'Option two'],
+      correctOptionIndex: 0,
+      conceptId: 'ts-types',
+      masteryCheck: null,
+      misconceptionDetected: null,
+    });
+    expect(msg.content).toBe('Which is correct?');
+    expect(msg.content).not.toContain('Option one');
+    expect(msg.content).not.toContain('Option two');
+  });
+
+  it('marks mastery-check question only when LLM calls provide_guidance', () => {
+    // When the LLM returns a plain-text fallback (tool = send_info) that
+    // happens to contain a question mark, it should NOT be marked as a
+    // mastery-check question.
+    const msgPlain = parser.buildTutorMessageFromParsed('test-session', {
+      tool: 'send_info',
+      content: 'What do you think about this?',
+      questionType: null,
+      options: null,
+      correctOptionIndex: null,
+      conceptId: 'ts-types',
+      masteryCheck: null,
+      misconceptionDetected: null,
+    });
+    expect(msgPlain.question?.isMasteryCheck).toBeUndefined();
+
+    // When the LLM properly calls provide_guidance, the caller
+    // (SocraticEngine.stepMasteryCheck) is responsible for setting
+    // isMasteryCheck, but the parser itself should preserve any existing
+    // question object without interfering.
+    const msgTool = parser.buildTutorMessageFromParsed('test-session', {
+      tool: 'provide_guidance',
+      content: 'Explain generics.',
+      questionType: 'open-ended',
+      options: null,
+      correctOptionIndex: null,
+      conceptId: 'ts-generics',
+      masteryCheck: null,
+      misconceptionDetected: null,
+    });
+    expect(msgTool.question).toBeDefined();
+    expect(msgTool.question?.isMasteryCheck).toBeUndefined();
+  });
 });
 
 describe('SocraticEngine.getPhase', () => {

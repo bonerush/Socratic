@@ -19,6 +19,8 @@ export interface ViewState {
   sessionResume: { resolve: (choice: 'resume' | 'restart') => void } | null;
   noteSwitchResume: { resolve: (choice: 'resume' | 'restart' | 'cancel') => void } | null;
   showHistory: boolean;
+  pendingUserText: string;
+  revokingMessageIds: string[];
   [key: string]: unknown;
 }
 
@@ -44,6 +46,8 @@ export class ReactSocraticView extends ItemView {
     sessionResume: null,
     noteSwitchResume: null,
     showHistory: false,
+    pendingUserText: '',
+    revokingMessageIds: [],
   };
   private listeners = new Set<() => void>();
 
@@ -183,6 +187,22 @@ export class ReactSocraticView extends ItemView {
 
   setShowHistory(show: boolean): void {
     this.updateState({ showHistory: show });
+  }
+
+  setPendingUserText(text: string): void {
+    this.updateState({ pendingUserText: text });
+  }
+
+  revokeMessage(messageId: string): void {
+    const currentIds = this._state.revokingMessageIds;
+    if (currentIds.includes(messageId)) return;
+    this.updateState({ revokingMessageIds: [...currentIds, messageId] });
+
+    window.setTimeout(() => {
+      const nextMessages = this._state.messages.filter(m => m.id !== messageId);
+      const nextIds = this._state.revokingMessageIds.filter(id => id !== messageId);
+      this.updateState({ messages: nextMessages, revokingMessageIds: nextIds });
+    }, 350);
   }
 
   updateProgress(session: SessionState): void {

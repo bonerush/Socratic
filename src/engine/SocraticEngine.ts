@@ -125,6 +125,8 @@ export class SocraticEngine {
 
     const recentMessages = session.messages.slice(-MAX_CONTEXT_MESSAGES);
     const context = recentMessages
+      // Exclude revoked messages so cancelled user inputs don't leak into LLM context.
+      .filter(m => !m.revoked)
       // Exclude system-generated mastery feedback from the conversation context
       // to prevent the LLM from mistaking it as prompt injection.
       .filter(m => !(m.role === 'tutor' && m.type === 'feedback' &&
@@ -426,8 +428,10 @@ Requirements:
         };
       }
 
-      // Mark as mastery check question so the engine can detect pending checks.
-      if (message.question) {
+      // Only mark as mastery check if the LLM actually called provide_guidance.
+      // If it returned plain-text fallback, treat it as a regular question so
+      // handleMasteryCheckFlow does not mistakenly trigger an assessment.
+      if (message.question && parsed.tool === 'provide_guidance') {
         message = { ...message, question: { ...message.question, isMasteryCheck: true } };
       }
 
@@ -459,7 +463,15 @@ Requirements:
         (response) => this.parser.parseStructuredResponse(response),
       );
 
-      const message = this.parser.buildTutorMessageFromParsed(this.sessionSlug, parsed);
+      let message = this.parser.buildTutorMessageFromParsed(this.sessionSlug, parsed);
+
+      // Mark assess_mastery feedback so handleMasteryCheckFlow knows the check
+      // is complete and can continue to normal teaching instead of re-running
+      // another mastery check.
+      if (message.question) {
+        message = { ...message, question: { ...message.question, isMasteryCheck: true } };
+      }
+
       const dimensions: MasteryDimension = parsed.masteryCheck || {
         correctness: false,
         explanationDepth: false,

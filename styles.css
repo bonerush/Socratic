@@ -119,6 +119,17 @@
   animation: ringBreathe 3s ease-in-out infinite;
 }
 
+.socratic-energy-ring--active {
+  animation: none;
+}
+
+.socratic-energy-ring__inner--active {
+  background: #fbbf24;
+  -webkit-mask: none;
+          mask: none;
+  animation: ringBreathe 3s ease-in-out infinite;
+}
+
 @keyframes ringSpin {
   to { transform: rotate(360deg); }
 }
@@ -406,6 +417,11 @@
   animation: messageIn 0.25s ease;
 }
 
+.socratic-message-revoking {
+  animation: messageOut 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+}
+
 .socratic-message.socratic-message-tutor {
   max-width: 92%;
 }
@@ -413,6 +429,11 @@
 @keyframes messageIn {
   from { opacity: 0; transform: translateY(8px) scale(0.97); }
   to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes messageOut {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-8px) scale(0.95); }
 }
 
 @keyframes optionPulse {

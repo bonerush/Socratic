@@ -2,6 +2,7 @@ import React, { createContext, useContext, useSyncExternalStore, useCallback } f
 import type { App, Component } from 'obsidian';
 import type { TutorMessage, ConceptState, SelfAssessmentLevel, SessionSummary } from '../../types';
 import type { Lang, TranslationMap } from '../../i18n/translations';
+import { CancelledError } from '../../llm/LLMService';
 import { ReactSocraticView } from '../ReactSocraticView';
 
 interface DialogState {
@@ -32,6 +33,9 @@ interface SocraticContextType {
   onNewSession: () => Promise<void>;
   onViewRoadmap: () => Promise<void>;
   onExitToMain: () => Promise<void>;
+  onCancelProcessing: () => void;
+
+  pendingUserText: string;
 
   // Dialog state & callbacks for React components
   dialogState: DialogState;
@@ -44,6 +48,8 @@ interface SocraticContextType {
   listSessionHistory: () => Promise<SessionSummary[]>;
   loadSessionFromHistory: (slug: string, sessionId?: string) => Promise<void>;
   deleteSessionFromHistory: (slug: string, sessionId?: string) => Promise<void>;
+
+  revokingMessageIds: string[];
 }
 
 const SocraticContext = createContext<SocraticContextType | null>(null);
@@ -97,6 +103,9 @@ export function SocraticProvider({ view, children }: SocraticProviderProps) {
     try {
       await fn();
     } catch (e) {
+      if (e instanceof CancelledError) {
+        return;
+      }
       view.showError(e instanceof Error ? e.message : errorLabel);
     } finally {
       view.setProcessing(false);
@@ -126,6 +135,11 @@ export function SocraticProvider({ view, children }: SocraticProviderProps) {
   const onExitToMainFn = useCallback(async () => {
     await withProcessing(() => plugin.exitToMainScreen(), 'Error exiting to main');
   }, [withProcessing, plugin]);
+
+  const onCancelProcessingFn = useCallback(() => {
+    plugin.cancelProcessing();
+    view.setProcessing(false);
+  }, [plugin, view]);
 
   const setShowHistoryFn = useCallback((show: boolean) => {
     view.setShowHistory(show);
@@ -163,6 +177,8 @@ export function SocraticProvider({ view, children }: SocraticProviderProps) {
     onNewSession: onNewSessionFn,
     onViewRoadmap: onViewRoadmapFn,
     onExitToMain: onExitToMainFn,
+    onCancelProcessing: onCancelProcessingFn,
+    pendingUserText: state.pendingUserText,
     dialogState,
     resolveSelfAssessment: resolveSelfAssessmentFn,
     resolveSessionResume: resolveSessionResumeFn,
@@ -172,6 +188,7 @@ export function SocraticProvider({ view, children }: SocraticProviderProps) {
     listSessionHistory: listSessionHistoryFn,
     loadSessionFromHistory: loadSessionFromHistoryFn,
     deleteSessionFromHistory: deleteSessionFromHistoryFn,
+    revokingMessageIds: state.revokingMessageIds,
   };
 
   return (

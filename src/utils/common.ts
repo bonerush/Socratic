@@ -58,6 +58,10 @@ export async function withRetry<T>(
       return await fn();
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+      // Do not retry cancelled requests — propagate cancellation immediately.
+      if (lastError.name === 'CancelledError') {
+        throw lastError;
+      }
       if (attempt < maxRetries) {
         await new Promise((r) => setTimeout(r, baseDelayMs * (attempt + 1)));
       }

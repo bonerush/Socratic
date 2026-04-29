@@ -2,15 +2,36 @@ import React, { useRef, useEffect } from 'react';
 import { useSocratic } from '../SocraticContext';
 
 export function Composer() {
-  const { onSendMessage, isProcessing, t } = useSocratic();
+  const { onSendMessage, onCancelProcessing, isProcessing, t } = useSocratic();
   const [value, setValue] = React.useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lastDraftRef = useRef('');
 
   useEffect(() => {
     if (!isProcessing && textareaRef.current) {
       textareaRef.current.focus();
     }
   }, [isProcessing]);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (!isProcessing) return;
+      if (!e.ctrlKey || e.key !== 'c') return;
+
+      const selection = window.getSelection()?.toString() ?? '';
+      if (selection.length > 0) return;
+
+      e.preventDefault();
+      onCancelProcessing();
+      if (lastDraftRef.current) {
+        setValue(lastDraftRef.current);
+        requestAnimationFrame(() => adjustHeight());
+      }
+    };
+
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [isProcessing, onCancelProcessing]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -22,6 +43,7 @@ export function Composer() {
   const handleSubmit = () => {
     const text = value.trim();
     if (!text || isProcessing) return;
+    lastDraftRef.current = text;
     setValue('');
     void onSendMessage(text);
   };

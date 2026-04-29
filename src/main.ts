@@ -345,4 +345,8 @@ export default class SocraticNoteTutorPlugin extends Plugin {
   async openRoadmap(): Promise<void> {
     return this.tutoringFlow.openRoadmap();
   }
+
+  cancelProcessing(): void {
+    this.tutoringFlow.cancelProcessing();
+  }
 }

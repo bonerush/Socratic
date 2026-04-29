@@ -5,6 +5,7 @@ import type {
 } from '../types';
 import type { ReactSocraticView } from '../ui/ReactSocraticView';
 import type { SessionManager } from '../session/SessionManager';
+import { CancelledError } from '../llm/LLMService';
 import type { LLMService } from '../llm/LLMService';
 import type { SocraticEngine } from '../engine/SocraticEngine';
 import type { Tracer } from '../debug/Tracer';
@@ -85,6 +86,7 @@ export class TutoringFlow {
 
       await this.startNewSessionWithNote(note.title, note.content);
     } catch (error) {
+      if (error instanceof CancelledError) return;
       view.showError(`${this.t.startFailed}: ${getErrorMessage(error)}`);
     }
   }
@@ -117,6 +119,7 @@ export class TutoringFlow {
       view.addMessage(msg);
       await this.sessionManager.saveSession(this.session.noteSlug, this.session);
     } catch (error) {
+      if (error instanceof CancelledError) return;
       view.showError(`${this.t.startFailed}: ${getErrorMessage(error)}`);
     }
   }
@@ -150,6 +153,23 @@ export class TutoringFlow {
     this.session = loaded;
     await this.restoreSessionView(loaded, view);
     view.updateProgress(this.session);
+  }
+
+  cancelProcessing(): void {
+    this.llmService.cancel();
+
+    if (this.session && this.session.messages.length > 0) {
+      const lastMsg = this.session.messages[this.session.messages.length - 1];
+      if (lastMsg && lastMsg.role === 'user') {
+        this.produceSession({
+          messages: this.session.messages.slice(0, -1),
+        });
+        const view = this.getReactView();
+        if (view) {
+          view.revokeMessage(lastMsg.id);
+        }
+      }
+    }
   }
 
   async deleteSessionFromHistory(slug: string, sessionId?: string): Promise<void> {
@@ -247,6 +267,7 @@ export class TutoringFlow {
         await this.continueTutoring();
       }
     } catch (error) {
+      if (error instanceof CancelledError) return;
       view.showError(`${this.t.resumeFailed}: ${getErrorMessage(error)}`);
     }
   }
@@ -370,6 +391,7 @@ export class TutoringFlow {
       view.updateProgress(this.session);
       await this.sessionManager.saveSession(this.session.noteSlug, this.session);
     } catch (error) {
+      if (error instanceof CancelledError) return;
       view.showError(`Error: ${getErrorMessage(error)}`);
     }
   }
@@ -611,6 +633,7 @@ export class TutoringFlow {
     try {
       await fn(view);
     } catch (error) {
+      if (error instanceof CancelledError) return;
       view.showError(`${errorLabel}: ${getErrorMessage(error)}`);
     }
   }

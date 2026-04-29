@@ -208,8 +208,10 @@ export class ResponseParser {
 
     // Strip option lines from content for multiple-choice questions so the
     // message bubble shows only the stem, not duplicate option text.
+    // Only delete lines whose text matches a known option to avoid removing
+    // code examples or other A/B-labelled content that is not an option.
     if (questionType === 'multiple-choice' && options && options.length > 0) {
-      content = this.stripOptionLinesFromContent(content);
+      content = this.stripOptionLinesFromContent(content, options);
     }
 
     const question: Question | undefined = questionType
@@ -275,14 +277,19 @@ export class ResponseParser {
     return null;
   }
 
-  private stripOptionLinesFromContent(content: string): string {
+  private stripOptionLinesFromContent(content: string, options: string[]): string {
     const optionRegex = /^\s*([A-Da-d])[.、。:：,，!！?？）)\]}-\s]+\s*(.+)$/;
     const simpleRegex = /^\s*([A-Da-d])\s+(.+)$/;
 
     const lines = content.split('\n');
     const cleaned = lines.filter((line) => {
       const match = optionRegex.exec(line) || simpleRegex.exec(line);
-      return !match;
+      if (!match) return true;
+      // Only strip if the matched text corresponds to a known option.
+      // This prevents deleting code examples or other A/B-labelled content
+      // that happens to start with A-D but is not a multiple-choice option.
+      const text = match[2]?.trim() ?? '';
+      return !options.some(opt => opt.trim() === text);
     });
 
     return cleaned.join('\n').trim();

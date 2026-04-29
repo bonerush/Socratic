@@ -55,6 +55,7 @@ export interface TutorMessage {
   content: string;
   question?: Question;
   timestamp: number;
+  revoked?: boolean;
 }
 
 export interface SessionState {

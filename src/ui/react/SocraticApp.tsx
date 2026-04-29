@@ -29,7 +29,7 @@ function SocraticAppInner() {
       <div className="socratic-header">
         <div className="socratic-header__brand">
           <h3>{t.viewTitle}</h3>
-          {!isSessionActive && <EnergyRing />}
+          <EnergyRing isActive={isSessionActive} />
         </div>
         <div className="socratic-header-actions">
           <span

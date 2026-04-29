@@ -9,6 +9,7 @@ const FRESHNESS_THRESHOLD_MS = 10000;
 
 interface MessageBubbleProps {
   message: TutorMessage;
+  isRevoking?: boolean;
 }
 
 function getCopyText(message: TutorMessage): string {
@@ -30,7 +31,7 @@ function getCopyText(message: TutorMessage): string {
  *   of Markdown content; older messages render instantly.
  * - Question options appear below the bubble content.
  */
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, isRevoking }: MessageBubbleProps) {
   const { onSelectOption, isProcessing, app, viewComponent, t, messages } = useSocratic();
   const isUser = message.role === 'user';
   const isSystem = message.type === 'system';
@@ -83,7 +84,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   );
 
   return (
-    <div className={`socratic-message socratic-message-${isUser ? 'user' : 'tutor'}`}>
+    <div className={`socratic-message socratic-message-${isUser ? 'user' : 'tutor'}${isRevoking ? ' socratic-message-revoking' : ''}`}>
       <div className="socratic-message-bubble">
         <button
           className="socratic-message-copy"

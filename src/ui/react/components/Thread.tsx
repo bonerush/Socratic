@@ -8,7 +8,7 @@ import { WelcomeScreen } from './WelcomeScreen';
 const TRANSITION_DURATION_MS = 300;
 
 export function Thread() {
-  const { messages, isProcessing, isSessionActive } = useSocratic();
+  const { messages, isProcessing, isSessionActive, revokingMessageIds } = useSocratic();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [displayMode, setDisplayMode] = useState(isSessionActive);
   const [isExiting, setIsExiting] = useState(false);
@@ -48,7 +48,11 @@ export function Thread() {
       <div className={`socratic-thread-content ${transitionClass}`}>
         <div className="socratic-messages">
           {messages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} />
+            <MessageBubble
+              key={msg.id}
+              message={msg}
+              isRevoking={revokingMessageIds.includes(msg.id)}
+            />
           ))}
           {isProcessing && <TypingIndicator />}
           <div ref={messagesEndRef} />
