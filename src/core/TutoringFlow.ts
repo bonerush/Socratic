@@ -634,12 +634,19 @@ export class TutoringFlow {
       return null;
     }
     if (!this.settings.apiKey) {
+      new Notice(this.t.noApiKey);
       view.showError(this.t.noApiKey);
       return null;
     }
     const note = this.getActiveNote();
     if (!note) {
+      new Notice(this.t.noNote);
       view.showError(this.t.noNote);
+      return null;
+    }
+    if (!note.content.trim()) {
+      new Notice(this.t.emptyNote);
+      view.showError(this.t.emptyNote);
       return null;
     }
     const lang = resolveLang(this.settings.language, note.content);

@@ -295,7 +295,7 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     if (!activeView) return null;
     const content = activeView.editor.getValue();
     const title = activeView.file?.name?.replace(/\.md$/, '') || 'Untitled';
-    return content.trim() ? { title, content } : null;
+    return { title, content };
   }
 
   async startNewSession(): Promise<void> {
