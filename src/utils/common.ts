@@ -76,13 +76,3 @@ export function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
 }
 
-export async function withErrorPrefix<T>(
-  fn: () => Promise<T>,
-  prefix: string,
-): Promise<T> {
-  try {
-    return await fn();
-  } catch (error) {
-    throw new Error(`${prefix}: ${getErrorMessage(error)}`);
-  }
-}

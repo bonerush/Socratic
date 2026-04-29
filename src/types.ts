@@ -1,8 +1,8 @@
-export const PLUGIN_ID = 'socratic-note-tutor';
+const PLUGIN_ID = 'socratic-note-tutor';
 export const VIEW_TYPE_SOCRATIC = `${PLUGIN_ID}:socratic-view`;
 export const SESSION_DIR = '.socratic-sessions';
 
-export type ConceptStatus = 'pending' | 'learning' | 'mastered' | 'skipped';
+type ConceptStatus = 'pending' | 'learning' | 'mastered' | 'skipped';
 
 export interface ConceptState {
   id: string;
@@ -25,7 +25,7 @@ export interface MasteryDimension {
   conceptDiscrimination: boolean;
 }
 
-export interface MisconceptionRecord {
+interface MisconceptionRecord {
   id: string;
   conceptId: string;
   misconception: string;
@@ -35,7 +35,7 @@ export interface MisconceptionRecord {
   userExplanation: string | null;
 }
 
-export type QuestionType = 'multiple-choice' | 'open-ended';
+type QuestionType = 'multiple-choice' | 'open-ended';
 
 export interface Question {
   id: string;
@@ -101,7 +101,7 @@ export interface Memory {
   source?: string;
 }
 
-export interface MemoryCollection {
+interface MemoryCollection {
   user: Memory[];
   feedback: Memory[];
   project: Memory[];
@@ -121,12 +121,6 @@ export interface SessionSummary {
   conceptCount: number;
   completed: boolean;
   messageCount: number;
-}
-
-export interface NoteSessionGroup {
-  noteSlug: string;
-  noteTitle: string;
-  sessions: SessionSummary[];
 }
 
 export interface SocraticPluginSettings {

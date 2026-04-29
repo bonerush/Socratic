@@ -10,7 +10,6 @@
 		"noImplicitThis": true,
 		"noImplicitReturns": true,
 		"moduleResolution": "node",
-		"importHelpers": true,
 		"noUncheckedIndexedAccess": true,
 		"isolatedModules": true,
 		"strictNullChecks": true,

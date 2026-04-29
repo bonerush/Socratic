@@ -9,7 +9,7 @@ import type SocraticNoteTutorPlugin from '../main';
 
 import { VIEW_TYPE_SOCRATIC } from '../types';
 
-export interface ViewState {
+interface ViewState {
   messages: TutorMessage[];
   isProcessing: boolean;
   isSessionActive: boolean;

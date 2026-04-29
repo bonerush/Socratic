@@ -15,7 +15,7 @@ import { generateId, slugify, getErrorMessage } from '../utils/common';
 import { countRoundsForConcept } from '../utils/session';
 import { generateRoadmapHtml, generateSummaryHtml } from '../templates';
 
-export interface TutoringFlowDeps {
+interface TutoringFlowDeps {
   settings: SocraticPluginSettings;
   sessionManager: SessionManager;
   llmService: LLMService;
@@ -244,13 +244,8 @@ export class TutoringFlow {
       );
 
       if (needsReview.length > 0) {
-        view.addMessage({
-          id: generateId(),
-          role: 'tutor',
-          type: 'info',
-          content: `${needsReview.length} ${this.t.dueForReview}`,
-          timestamp: Date.now(),
-        });
+        const reviewMsg = this.addTutorMessage(`${needsReview.length} ${this.t.dueForReview}`);
+        view.addMessage(reviewMsg);
         for (const concept of needsReview) {
           await this.runReview(concept);
         }
@@ -307,14 +302,7 @@ export class TutoringFlow {
       await this.sessionManager.saveRoadmap(this.session!.noteSlug, roadmapHtml);
       await this.sessionManager.saveSession(this.session!.noteSlug, this.session!);
 
-      const transitionMsg: TutorMessage = {
-        id: generateId(),
-        role: 'tutor',
-        type: 'info',
-        content: this.t.conceptTransition,
-        timestamp: Date.now(),
-      };
-      this.pushMessage(transitionMsg);
+      const transitionMsg = this.addTutorMessage(this.t.conceptTransition);
       view.addMessage(transitionMsg);
 
       await this.continueTutoring(recursionDepth + 1);
@@ -472,14 +460,7 @@ export class TutoringFlow {
           selfAssessment,
         });
         this.produceSession({ currentConceptId: null });
-        const masteryMsg: TutorMessage = {
-          id: generateId(),
-          role: 'tutor',
-          type: 'info',
-          content: `${concept.name} mastered! (${newScore}%)`,
-          timestamp: Date.now(),
-        };
-        this.pushMessage(masteryMsg);
+        const masteryMsg = this.addTutorMessage(`${concept.name} mastered! (${newScore}%)`);
         view.addMessage(masteryMsg);
         await this.runPracticeTask(concept.id);
       } else {
@@ -490,14 +471,10 @@ export class TutoringFlow {
           lastReviewTime: Date.now(),
           selfAssessment,
         });
-        const feedbackMsg: TutorMessage = {
-          id: generateId(),
-          role: 'tutor',
-          type: 'feedback',
-          content: this.t.masteryFeedbackTemplate.replace('{score}', String(newScore)),
-          timestamp: Date.now(),
-        };
-        this.pushMessage(feedbackMsg);
+        const feedbackMsg = this.addTutorMessage(
+          this.t.masteryFeedbackTemplate.replace('{score}', String(newScore)),
+          'feedback'
+        );
         view.addMessage(feedbackMsg);
       }
 
@@ -621,6 +598,18 @@ export class TutoringFlow {
 
   private pushMessage(msg: TutorMessage): void {
     this.produceSession({ messages: [...this.session!.messages, msg] });
+  }
+
+  private addTutorMessage(content: string, type: TutorMessage['type'] = 'info'): TutorMessage {
+    const msg: TutorMessage = {
+      id: generateId(),
+      role: 'tutor',
+      type,
+      content,
+      timestamp: Date.now(),
+    };
+    this.pushMessage(msg);
+    return msg;
   }
 
   private async withSessionView(

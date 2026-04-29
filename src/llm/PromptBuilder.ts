@@ -23,7 +23,7 @@ export interface SystemPromptContext {
   conversationSummary?: string;
 }
 
-export interface PromptBlock {
+interface PromptBlock {
   id: string;
   content: string;
   priority: number;

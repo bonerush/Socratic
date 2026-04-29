@@ -1,7 +1,7 @@
 import type { Vault } from 'obsidian';
 import type { ToolCall } from '../llm/tools';
 
-export type TraceEventType =
+type TraceEventType =
   | 'phase-start'
   | 'phase-end'
   | 'llm-request'
@@ -30,7 +30,7 @@ export interface TraceEvent {
   data: Record<string, unknown>;
 }
 
-export interface TracerOptions {
+interface TracerOptions {
   vault: Vault;
   enabled: boolean;
   storagePath: string;

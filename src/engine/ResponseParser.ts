@@ -11,10 +11,6 @@ export interface ExtractedConcept {
   dependencies: string[];
 }
 
-export interface ConceptExtractionResponse {
-  concepts: ExtractedConcept[];
-}
-
 export interface LLMStructuredResponse {
   tool: 'provide_guidance' | 'assess_mastery' | 'extract_concepts' | 'send_info';
   type?: 'question' | 'feedback' | 'info' | 'check-complete' | 'concept-extraction';

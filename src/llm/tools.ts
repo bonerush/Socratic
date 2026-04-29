@@ -156,10 +156,6 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
 ];
 
-export function getToolDefinitions(): ToolDefinition[] {
-  return TOOL_DEFINITIONS;
-}
-
 export function getToolDefinitionsForPhase(phase: string): ToolDefinition[] {
   switch (phase) {
     case 'diagnosis':
@@ -194,7 +190,7 @@ export function getToolDescriptions(phase?: string): string {
     .join('\n\n');
 }
 
-export interface ValidatedToolCall {
+interface ValidatedToolCall {
   name: string;
   args: Record<string, unknown>;
 }

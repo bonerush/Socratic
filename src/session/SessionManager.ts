@@ -39,15 +39,48 @@ export class SessionManager {
     }
   }
 
+  private async listFiles(dir: string): Promise<string[]> {
+    try {
+      const listing = await this.vault.adapter.list(dir);
+      if (!listing || typeof listing !== 'object') return [];
+      return Array.isArray(listing.files) ? listing.files : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private resolveFilePath(file: string, baseDir: string): string {
+    return file.startsWith(baseDir) ? file : normalizePath(`${baseDir}/${file}`);
+  }
+
+  private async safeRemove(path: string): Promise<void> {
+    try {
+      await this.vault.adapter.remove(path);
+    } catch {
+      // File may not exist
+    }
+  }
+
+  private buildSessionSummary(state: SessionState, sessionId: string): SessionSummary {
+    return {
+      noteSlug: state.noteSlug,
+      noteTitle: state.noteTitle,
+      sessionId,
+      createdAt: state.createdAt,
+      updatedAt: state.updatedAt,
+      conceptCount: state.concepts.length,
+      completed: state.completed,
+      messageCount: state.messages.length,
+    };
+  }
+
   async hasAnySessionHistory(noteSlug: string): Promise<boolean> {
     if (await this.sessionExists(noteSlug)) return true;
     const historyDir = this.getHistoryDir(noteSlug);
     try {
       const exists = await this.vault.adapter.exists(historyDir);
       if (!exists) return false;
-      const listing = await this.vault.adapter.list(historyDir);
-      if (!listing || typeof listing !== 'object') return false;
-      const files = Array.isArray(listing.files) ? listing.files : [];
+      const files = await this.listFiles(historyDir);
       return files.some((f) => typeof f === 'string' && f.endsWith('.json'));
     } catch {
       return false;
@@ -62,13 +95,11 @@ export class SessionManager {
     try {
       const exists = await this.vault.adapter.exists(historyDir);
       if (!exists) return null;
-      const listing = await this.vault.adapter.list(historyDir);
-      if (!listing || typeof listing !== 'object') return null;
-      const files = Array.isArray(listing.files) ? listing.files : [];
+      const files = await this.listFiles(historyDir);
 
       const jsonFiles = files
         .filter((f): f is string => typeof f === 'string' && f.endsWith('.json'))
-        .map((f) => (f.startsWith(historyDir) ? f : normalizePath(`${historyDir}/${f}`)))
+        .map((f) => this.resolveFilePath(f, historyDir))
         .sort();
 
       if (jsonFiles.length === 0) return null;
@@ -184,13 +215,8 @@ export class SessionManager {
       const exists = await this.vault.adapter.exists(dir);
       if (!exists) return;
 
-      let files: string[] = [];
-      try {
-        const listing = await this.vault.adapter.list(dir);
-        if (listing && typeof listing === 'object') {
-          files = Array.isArray(listing.files) ? listing.files : [];
-        }
-      } catch {
+      let files = await this.listFiles(dir);
+      if (files.length === 0) {
         // list() may fail; fall back to known file names
         files = [
           `${dir}/session.json`,
@@ -203,12 +229,7 @@ export class SessionManager {
 
       for (const file of files) {
         if (typeof file !== 'string') continue;
-        const filePath = file.startsWith(dir) ? file : normalizePath(`${dir}/${file}`);
-        try {
-          await this.vault.adapter.remove(filePath);
-        } catch {
-          // File may not exist
-        }
+        await this.safeRemove(this.resolveFilePath(file, dir));
       }
 
       // Also delete history folder if it exists
@@ -216,18 +237,10 @@ export class SessionManager {
         const historyDir = this.getHistoryDir(noteSlug);
         const historyExists = await this.vault.adapter.exists(historyDir);
         if (historyExists) {
-          const historyListing = await this.vault.adapter.list(historyDir);
-          if (historyListing && typeof historyListing === 'object') {
-            const historyFiles = Array.isArray(historyListing.files) ? historyListing.files : [];
-            for (const file of historyFiles) {
-              if (typeof file !== 'string') continue;
-              const filePath = file.startsWith(historyDir) ? file : normalizePath(`${historyDir}/${file}`);
-              try {
-                await this.vault.adapter.remove(filePath);
-              } catch {
-                // Ignore
-              }
-            }
+          const historyFiles = await this.listFiles(historyDir);
+          for (const file of historyFiles) {
+            if (typeof file !== 'string') continue;
+            await this.safeRemove(this.resolveFilePath(file, historyDir));
           }
           await this.vault.adapter.remove(historyDir);
         }
@@ -304,16 +317,7 @@ export class SessionManager {
     try {
       const raw = await this.vault.adapter.read(sessionPath);
       const state = JSON.parse(raw) as SessionState;
-      return {
-        noteSlug: state.noteSlug,
-        noteTitle: state.noteTitle,
-        sessionId: 'current',
-        createdAt: state.createdAt,
-        updatedAt: state.updatedAt,
-        conceptCount: state.concepts.length,
-        completed: state.completed,
-        messageCount: state.messages.length,
-      };
+      return this.buildSessionSummary(state, 'current');
     } catch {
       return null;
     }
@@ -325,10 +329,7 @@ export class SessionManager {
       const exists = await this.vault.adapter.exists(historyDir);
       if (!exists) return [];
 
-      const listing = await this.vault.adapter.list(historyDir);
-      if (!listing || typeof listing !== 'object') return [];
-
-      const files = Array.isArray(listing.files) ? listing.files : [];
+      const files = await this.listFiles(historyDir);
       const summaries: SessionSummary[] = [];
 
       for (const file of files) {
@@ -336,20 +337,11 @@ export class SessionManager {
         const fileName = file.replace(/\\/g, '/').split('/').pop() || '';
         if (!fileName.endsWith('.json')) continue;
         const sessionId = fileName.replace(/\.json$/, '');
-        const filePath = file.startsWith(historyDir) ? file : normalizePath(`${historyDir}/${file}`);
+        const filePath = this.resolveFilePath(file, historyDir);
         try {
           const raw = await this.vault.adapter.read(filePath);
           const state = JSON.parse(raw) as SessionState;
-          summaries.push({
-            noteSlug: state.noteSlug,
-            noteTitle: state.noteTitle,
-            sessionId,
-            createdAt: state.createdAt,
-            updatedAt: state.updatedAt,
-            conceptCount: state.concepts.length,
-            completed: state.completed,
-            messageCount: state.messages.length,
-          });
+          summaries.push(this.buildSessionSummary(state, sessionId));
         } catch {
           // Skip unreadable files
         }

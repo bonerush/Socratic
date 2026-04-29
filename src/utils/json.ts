@@ -74,16 +74,3 @@ export function containsValidJson(text: string): boolean {
 	return false;
 }
 
-/**
- * Safely extract an array from a parsed JSON object under common field names.
- */
-export function extractArrayField(
-	parsed: Record<string, unknown>,
-	...fieldNames: string[]
-): unknown[] | undefined {
-	for (const name of fieldNames) {
-		const value = parsed[name];
-		if (Array.isArray(value)) return value as unknown[];
-	}
-	return undefined;
-}

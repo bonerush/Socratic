@@ -63,7 +63,7 @@ INCORRECT — DO NOT do this (plain text without tool call):
 
 type PhaseDescription = string | ((conceptName: string) => string);
 
-export const PHASE_DESCRIPTIONS: Record<string, PhaseDescription> = {
+const PHASE_DESCRIPTIONS: Record<string, PhaseDescription> = {
   diagnosis: 'You are diagnosing the student\'s current knowledge level. Assess their understanding — do not start teaching yet.',
   teaching: (conceptName: string) => `You are teaching the concept "${conceptName || 'unknown'}". Ask guiding questions to help the student discover the answer.`,
   'mastery-check': (conceptName: string) => `You are checking mastery of the concept "${conceptName || 'unknown'}". Evaluate across 4 dimensions: factual correctness, explanation depth, novel application, and concept discrimination.`,
