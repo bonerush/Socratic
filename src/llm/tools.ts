@@ -1,15 +1,3 @@
-/**
- * Simplified tool definitions for LLM function calling.
- *
- * Previously this was a 7-file class-based system with registries and
- * validators. The classes added ~400 lines of boilerplate but their
- * execute() methods were all identity functions (return args) and the
- * engine already has a lenient JSON fallback path. We keep only:
- * - The OpenAI-compatible shape types
- * - Static schema definitions
- * - A lightweight argument parser for the happy path
- */
-
 export interface ToolDefinition {
   type: 'function';
   function: {

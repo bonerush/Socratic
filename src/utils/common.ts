@@ -1,8 +1,4 @@
-/**
- * Common utility functions consolidated from previously fragmented modules.
- */
-
-// ── ID & string helpers (from helpers.ts) ───────────────────
+// ── ID & string helpers ────────────────────────────────────
 
 export function generateId(): string {
   const timestamp = Date.now().toString(36);
@@ -19,7 +15,7 @@ export function slugify(text: string): string {
     .substring(0, 80) || 'untitled';
 }
 
-// ── Text helpers (from text.ts) ─────────────────────────────
+// ── Text helpers ───────────────────────────────────────────
 
 export function formatInterval(seconds: number): string {
   if (seconds < 3600) return `${Math.round(seconds / 60)}min`;
@@ -31,7 +27,7 @@ export function sanitizeFilename(name: string): string {
   return name.replace(/[<>:"/\\|?*]/g, '_').trim() || 'untitled';
 }
 
-// ── HTML helpers (from html.ts) ─────────────────────────────
+// ── HTML helpers ───────────────────────────────────────────
 
 const HTML_ESCAPE_MAP: Record<string, string> = {
   '&': '&amp;',
@@ -45,7 +41,7 @@ export function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (c) => HTML_ESCAPE_MAP[c] || c);
 }
 
-// ── Async helpers (from async.ts) ───────────────────────────
+// ── Async helpers ──────────────────────────────────────────
 
 export async function withRetry<T>(
   fn: () => Promise<T>,
@@ -70,7 +66,7 @@ export async function withRetry<T>(
   throw lastError || new Error('Operation failed after retries');
 }
 
-// ── Error helpers (from error.ts) ───────────────────────────
+// ── Error helpers ──────────────────────────────────────────
 
 export function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Unknown error';
