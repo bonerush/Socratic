@@ -130,13 +130,16 @@
 
 ## 安装指南
 
-### 方法一：手动安装（推荐）
+### 方法一：通过 GitHub Release 安装（推荐）
 
-1. 前往 [GitHub Releases](https://github.com/bonerush/Socratic/releases) 页面，下载最新版本的发布包
-2. 解压后得到 `main.js`、`manifest.json`、`styles.css` 三个文件
+1. 前往本项目的 [GitHub Releases](https://github.com/bonerush/Socratic/releases) 页面
+2. 在最新版本的发布页面底部「Assets」栏目，下载以下三个文件：
+   - `main.js`
+   - `manifest.json`
+   - `styles.css`
 3. 在你的 Obsidian 仓库中创建文件夹：`.obsidian/plugins/socratic-note-tutor/`
-4. 将三个文件复制到该文件夹中
-5. 重启 Obsidian，或进入「设置 → 社区插件」中启用 **Socratic Note Tutor**
+4. 将下载的三个文件复制到该文件夹中
+5. 重启 Obsidian，进入「设置 → 社区插件」，关闭「安全模式」，然后启用 **Socratic Note Tutor**
 
 ### 方法二：通过 BRAT 安装
 
