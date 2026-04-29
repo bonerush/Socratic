@@ -323,17 +323,17 @@ export class SocraticEngine {
       // Second attempt: strict JSON-only prompt without tool calling.
       // Some models ignore tool calling or return preamble text; a stripped-down
       // prompt often forces them into JSON-only mode.
-      const retryPrompt = `Analyze the note content and extract 5-15 atomic concepts. Output ONLY a JSON object with this exact structure (no markdown, no explanation, no preamble):
+      const retryPrompt = `从笔记内容中提取 5-15 个原子概念。只输出一个 JSON 对象，不要任何解释、前言或 Markdown 代码块。严格使用以下格式：
 
-{"concepts":[{"id":"concept-slug","name":"Concept Name","description":"Brief description","dependencies":["other-slug"]}]}
+{"concepts":[{"id":"concept-slug","name":"概念名称","description":"简要描述","dependencies":["other-slug"]}]}
 
-Requirements:
-- Each concept has: id (slug format), name, description, dependencies (array of concept ids it depends on)
-- Order from basic to advanced
-- Use the same language as the note content`;
+要求：
+- 每个概念包含：id（短横线格式）、name（名称）、description（描述）、dependencies（依赖的其他概念 id 数组）
+- 按从基础到高级排序
+- 使用与笔记内容相同的语言`;
       const retryResponse = await this.llm.chat(systemPrompt, [
         { role: 'user', content: retryPrompt },
-      ], 0.3, 2000);
+      ], 0.3, 2000, undefined, true);
 
       const retryParsed = this.parser.parseStructuredResponse(retryResponse);
       if (retryParsed.concepts && Array.isArray(retryParsed.concepts) && retryParsed.concepts.length > 0) {

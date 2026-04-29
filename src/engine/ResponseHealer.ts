@@ -23,6 +23,13 @@ const PREAMBLE_PATTERNS = [
   /^我(先|来|将|会|要)/,
   /^OK[，,]/i,
   /^Okay[，,]/i,
+  // DeepSeek common preambles
+  /^我将从/,
+  /^好的，我/,
+  /^让我来/,
+  /^现在开始/,
+  /^开始/,
+  /^以下/,
 ];
 
 function isPreamble(text: string): boolean {
