@@ -28,6 +28,19 @@
 - **Bloom 2-Sigma 效应**：一对一针对性辅导，显著提升学习效果
 - **掌握学习（Mastery Learning）**：每个概念必须达到设定阈值才算真正掌握
 - **间隔重复（Spaced Repetition）**：自动安排复习，对抗遗忘曲线
+<table border="0">
+  <tr>
+    <td><img src="figure/main-view-dark.png" width="300"></td>
+    <td><img src="figure/main-view-light.png" width="300"></td>
+  </tr>
+</table>
+你还可以让苏格拉底给你出选择，右图是设置界面。
+<table border="0">
+  <tr>
+    <td><img src="figure/selection.png" width="300"></td>
+    <td><img src="figure/setting.png" width="300"></td>
+  </tr>
+</table>
 
 ---
 
