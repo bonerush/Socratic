@@ -143,9 +143,9 @@ export interface SocraticPluginSettings {
 }
 
 export const DEFAULT_SETTINGS: SocraticPluginSettings = {
-  apiEndpoint: 'https://api.openai.com/v1/chat/completions',
+  apiEndpoint: 'https://api.deepseek.com/chat/completions',
   apiKey: '',
-  model: 'gpt-4',
+  model: 'deepseek-v4-flash',
   language: 'zh',
   sessionStoragePath: '',
   maxConceptsPerSession: 15,

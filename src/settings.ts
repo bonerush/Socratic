@@ -23,7 +23,7 @@ export class SocraticSettingTab extends PluginSettingTab {
       .setName(this.t.apiEndpointLabel)
       .setDesc(this.t.apiEndpointDesc)
       .addText(text => text
-        .setPlaceholder('https://api.openai.com/v1/chat/completions')
+        .setPlaceholder('https://api.deepseek.com/chat/completions')
         .setValue(this.plugin.settings.apiEndpoint)
         .onChange(async value => {
           this.plugin.settings.apiEndpoint = value;

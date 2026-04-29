@@ -174,8 +174,8 @@ npm run build
 ### 快速开始
 
 1. **配置 API**：首次使用前，进入「设置 → Socratic Note Tutor Settings」，填写你的 LLM API 地址和密钥
-   - 支持 OpenAI、Anthropic、以及任何兼容 OpenAI API 格式的服务商
-   - 默认模型为 `gpt-4`，可根据需要更换
+   - 支持 DeepSeek、OpenAI、Anthropic、以及任何兼容 OpenAI API 格式的服务商
+   - 默认模型为 `deepseek-v4-flash`，可根据需要更换
 
 2. **打开辅导面板**：
    - 点击左侧边栏的 **大脑图标**（🧠）
@@ -217,9 +217,9 @@ npm run build
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
-| API 接口地址 | LLM 服务的 API 端点 | `https://api.openai.com/v1/chat/completions` |
+| API 接口地址 | LLM 服务的 API 端点 | `https://api.deepseek.com/chat/completions` |
 | API 密钥 | 你的 API Key | 空 |
-| 模型 | 使用的模型名称 | `gpt-4` |
+| 模型 | 使用的模型名称 | `deepseek-v4-flash` |
 | 禁用工具调用 | 若 API 代理不支持 function calling，启用此项 | 关闭 |
 | 语言偏好 | 界面与辅导语言（自动/英文/中文） | 自动 |
 | 会话存储路径 | 会话数据的本地存储路径 | 仓库根目录下的 `.socratic-sessions` |
