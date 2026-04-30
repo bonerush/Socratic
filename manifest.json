@@ -1,9 +1,9 @@
 {
 	"id": "socratic-note-tutor",
-	"name": "Socratic Note Tutor",
+	"name": "Socratic",
 	"version": "1.0.2",
 	"minAppVersion": "0.15.0",
 	"description": "A Socratic tutor that uses LLM and Bloom's 2-Sigma method to guide deep learning through questioning, mastery tracking, and spaced repetition.",
-	"author": "Socratic Tutor",
+	"author": "bonerush",
 	"isDesktopOnly": false
 }
