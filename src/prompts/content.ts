@@ -149,6 +149,32 @@ ${selection}
 使用 provide_guidance 工具返回你的回应。`;
 }
 
+export function buildQuizGenerationPrompt(messages: { role: string; content: string }[], noteTitle: string): string {
+  const truncatedMessages = messages.map(m => ({
+    role: m.role,
+    content: m.content.slice(0, 200),
+  }));
+  const history = truncatedMessages.map(m => `[${m.role}]: ${m.content}`).join('\n');
+
+  return `基于以下关于 "${noteTitle}" 的对话历史，生成巩固学习的测试题。
+
+要求：
+1. 必须包含选择题（multiple-choice）、填空题（fill-in-blank）、问答题（open-ended）三种题型之一或混合。
+2. 每道题需包含以下字段：
+   - id: 唯一标识符
+   - type: 题型，值为 "multiple-choice" | "fill-in-blank" | "open-ended"
+   - prompt: 题目内容
+   - options: 选项数组（仅选择题需要）
+   - correctAnswer: 正确答案（选择题填选项文本，填空题和问答题填写标准答案）
+   - explanation: 解析说明
+3. 严格返回单个 JSON 对象，格式：{ "questions": [...] }
+4. 语言与输入对话历史保持一致。
+5. 题目数量控制在 3-8 道。
+
+对话历史：
+${history}`;
+}
+
 export function buildConversationSummaryPrompt(messages: { role: string; content: string }[]): string {
   const history = messages.map(m => `[${m.role}]: ${m.content}`).join('\n');
   return `请用中文总结以下对话的核心内容（不超过 4 句话）：

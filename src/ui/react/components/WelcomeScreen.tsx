@@ -3,7 +3,7 @@ import { useSocratic } from '../SocraticContext';
 import { NeuralOrbCanvas } from './NeuralOrbCanvas';
 
 export function WelcomeScreen(): React.ReactElement {
-  const { t, onStartTutoring, isProcessing } = useSocratic();
+  const { t, onStartTutoring, isProcessing, hasOpenNote } = useSocratic();
   const [heroLine1, heroLine2] = t.welcomeHero.split('\n');
   const actionWord = t.welcomeHeroActionWord;
 
@@ -46,7 +46,7 @@ export function WelcomeScreen(): React.ReactElement {
             <span className="socratic-hero-line socratic-hero-line--2">{renderHeroLine2()}</span>
           )}
         </h2>
-        <p className="socratic-sub">{t.welcomeSub}</p>
+        <p className="socratic-sub">{hasOpenNote ? t.welcomeSubReady : t.welcomeSub}</p>
       </div>
     </div>
   );

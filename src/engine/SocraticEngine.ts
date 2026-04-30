@@ -1,8 +1,10 @@
-import { type SessionState, type TutorMessage, type ConceptState, type MasteryDimension } from '../types';
+import { type SessionState, type TutorMessage, type ConceptState, type MasteryDimension, type QuizQuestion } from '../types';
 import { LLMService } from '../llm/LLMService';
 import { PromptBuilder, assembleBlocks, type SystemPromptContext } from '../llm/PromptBuilder';
+import { buildQuizGenerationPrompt } from '../prompts/content';
+import { tryParseJson } from '../utils/json';
 import { getToolDefinitionsForPhase } from '../llm/tools';
-import { generateId, formatInterval } from '../utils/common';
+import { generateId, formatInterval, slugify } from '../utils/common';
 import { countRoundsForConcept } from '../utils/session';
 import type { Tracer } from '../debug/Tracer';
 import { ResponseParser, type ExtractedConcept } from './ResponseParser';
@@ -571,6 +573,58 @@ CRITICAL: 你必须调用 provide_guidance 工具。不要输出纯文本——�
     const newScore = Math.round(currentScore * 0.15 + dimensionScore * 0.85);
     const passed = newScore >= 80;
     return { passed, newScore };
+  }
+
+  async generateQuiz(messages: TutorMessage[], noteTitle: string): Promise<QuizQuestion[]> {
+    this.tracer?.engineStep(this.sessionSlug, 'generateQuiz', { messageCount: messages.length });
+    const prompt = buildQuizGenerationPrompt(
+      messages.map(m => ({ role: m.role, content: m.content })),
+      noteTitle,
+    );
+    const systemPrompt = 'You are an expert educational assessment designer. Generate high-quality quiz questions based on the provided conversation history.';
+    const response = await this.llm.chat(
+      systemPrompt,
+      [{ role: 'user', content: prompt }],
+      0.7,
+      4000,
+      undefined,
+      true,
+    );
+
+    const raw = response.content || '';
+    const parsed = tryParseJson<{ questions: Array<Record<string, unknown>> }>(raw);
+    if (!parsed || !Array.isArray(parsed.questions)) {
+      // Fallback: try to extract JSON from markdown code blocks
+      const fallback = tryParseJson<{ questions: Array<Record<string, unknown>> }>(
+        raw.replace(/```json\s*|\s*```/g, ''),
+      );
+      if (!fallback || !Array.isArray(fallback.questions)) {
+        return [];
+      }
+      return fallback.questions.map((q, idx) => this.mapToQuizQuestion(q, idx, noteTitle)).filter(Boolean) as QuizQuestion[];
+    }
+
+    return parsed.questions.map((q, idx) => this.mapToQuizQuestion(q, idx, noteTitle)).filter(Boolean) as QuizQuestion[];
+  }
+
+  private mapToQuizQuestion(raw: Record<string, unknown>, idx: number, noteTitle: string): QuizQuestion | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const type = raw.type as string;
+    if (!type || !['multiple-choice', 'fill-in-blank', 'open-ended'].includes(type)) return null;
+    const prompt = raw.prompt as string;
+    if (!prompt) return null;
+
+    return {
+      id: (raw.id as string) || `q-${idx}`,
+      type: type as QuizQuestion['type'],
+      prompt,
+      options: Array.isArray(raw.options) ? raw.options.filter((o): o is string => typeof o === 'string') : undefined,
+      correctAnswer: (raw.correctAnswer as string) || undefined,
+      explanation: (raw.explanation as string) || undefined,
+      sourceNoteSlug: slugify(noteTitle),
+      sourceNoteTitle: noteTitle,
+      sourceSessionId: 'unknown',
+    };
   }
 
   private withContentFallback(msg: TutorMessage, fallback = '...'): TutorMessage {

@@ -20,7 +20,7 @@ type TraceEventType =
   | 'timer-end'
   | 'session-summary';
 
-export interface TraceEvent {
+interface TraceEvent {
   id: string;
   timestamp: number;
   sessionSlug: string;

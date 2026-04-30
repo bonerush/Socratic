@@ -365,6 +365,16 @@ export class SessionManager {
     }
   }
 
+  async loadAllSessionStates(): Promise<SessionState[]> {
+    const summaries = await this.listSessions();
+    const states: SessionState[] = [];
+    for (const summary of summaries) {
+      const state = await this.loadSession(summary.noteSlug, summary.sessionId === 'current' ? undefined : summary.sessionId);
+      if (state) states.push(state);
+    }
+    return states;
+  }
+
   createNewSession(noteTitle: string, noteContent: string): SessionState {
     const now = Date.now();
     return {

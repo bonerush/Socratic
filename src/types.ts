@@ -123,6 +123,28 @@ export interface SessionSummary {
   messageCount: number;
 }
 
+type QuizQuestionType = 'multiple-choice' | 'fill-in-blank' | 'open-ended';
+
+export interface QuizQuestion {
+  id: string;
+  type: QuizQuestionType;
+  prompt: string;
+  options?: string[];
+  correctAnswer?: string;
+  explanation?: string;
+  sourceNoteSlug: string;
+  sourceNoteTitle: string;
+  sourceSessionId: string;
+}
+
+export interface QuizSet {
+  id: string;
+  title: string;
+  questions: QuizQuestion[];
+  generatedAt: number;
+  sourceCount: number;
+}
+
 export interface SocraticPluginSettings {
   apiEndpoint: string;
   apiKey: string;

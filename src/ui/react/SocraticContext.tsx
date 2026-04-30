@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useSyncExternalStore, useCallback } from 'react';
 import type { App, Component } from 'obsidian';
-import type { TutorMessage, ConceptState, SelfAssessmentLevel, SessionSummary } from '../../types';
+import type { TutorMessage, ConceptState, SelfAssessmentLevel, SessionSummary, SessionState, QuizQuestion } from '../../types';
 import type { Lang, TranslationMap } from '../../i18n/translations';
 import { CancelledError } from '../../llm/LLMService';
 import { ReactSocraticView } from '../ReactSocraticView';
@@ -45,9 +45,14 @@ interface SocraticContextType {
 
   showHistory: boolean;
   setShowHistory: (show: boolean) => void;
+  hasOpenNote: boolean;
+  showQuizGenerator: boolean;
+  setShowQuizGenerator: (show: boolean) => void;
   listSessionHistory: () => Promise<SessionSummary[]>;
   loadSessionFromHistory: (slug: string, sessionId?: string) => Promise<void>;
   deleteSessionFromHistory: (slug: string, sessionId?: string) => Promise<void>;
+  listAllSessionDetails: () => Promise<SessionState[]>;
+  generateQuiz: (messages: TutorMessage[], noteTitle: string) => Promise<QuizQuestion[]>;
 
   revokingMessageIds: string[];
 }
@@ -160,6 +165,18 @@ export function SocraticProvider({ view, children }: SocraticProviderProps) {
     await withProcessing(() => plugin.deleteSessionFromHistory(slug, sessionId), 'Error deleting session');
   }, [withProcessing, plugin]);
 
+  const setShowQuizGeneratorFn = useCallback((show: boolean) => {
+    view.setShowQuizGenerator(show);
+  }, [view]);
+
+  const listAllSessionDetailsFn = useCallback(async () => {
+    return plugin.listAllSessionDetails();
+  }, [plugin]);
+
+  const generateQuizFn = useCallback(async (messages: TutorMessage[], noteTitle: string) => {
+    return plugin.generateQuiz(messages, noteTitle);
+  }, [plugin]);
+
   const contextValue: SocraticContextType = {
     messages: state.messages,
     isProcessing: state.isProcessing,
@@ -185,9 +202,14 @@ export function SocraticProvider({ view, children }: SocraticProviderProps) {
     resolveNoteSwitchResume: resolveNoteSwitchResumeFn,
     showHistory: state.showHistory,
     setShowHistory: setShowHistoryFn,
+    hasOpenNote: state.hasOpenNote,
+    showQuizGenerator: state.showQuizGenerator,
+    setShowQuizGenerator: setShowQuizGeneratorFn,
     listSessionHistory: listSessionHistoryFn,
     loadSessionFromHistory: loadSessionFromHistoryFn,
     deleteSessionFromHistory: deleteSessionFromHistoryFn,
+    listAllSessionDetails: listAllSessionDetailsFn,
+    generateQuiz: generateQuizFn,
     revokingMessageIds: state.revokingMessageIds,
   };
 

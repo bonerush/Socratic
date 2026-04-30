@@ -99,8 +99,12 @@ export default class SocraticNoteTutorPlugin extends Plugin {
 
     if (this.app.workspace.layoutReady) {
       void this.activateView();
+      this.updateOpenNoteState();
     } else {
-      this.app.workspace.onLayoutReady(() => void this.activateView());
+      this.app.workspace.onLayoutReady(() => {
+        void this.activateView();
+        this.updateOpenNoteState();
+      });
     }
   }
 
@@ -229,12 +233,19 @@ export default class SocraticNoteTutorPlugin extends Plugin {
     this.session = null;
   }
 
+  private updateOpenNoteState(): void {
+    const note = this.getActiveNote();
+    this.getReactView()?.setHasOpenNote(note !== null);
+  }
+
   private async handleActiveLeafChange(leaf: WorkspaceLeaf | null): Promise<void> {
     if (!leaf) return;
     const view = leaf.view;
     if (!(view instanceof MarkdownView)) return;
     const file = view.file;
     if (!file) return;
+
+    this.updateOpenNoteState();
 
     const noteTitle = file.name.replace(/\.md$/, '');
     const slug = slugify(noteTitle);
@@ -332,6 +343,14 @@ export default class SocraticNoteTutorPlugin extends Plugin {
 
   async listSessionHistory(): Promise<SessionSummary[]> {
     return this.tutoringFlow.listSessionHistory();
+  }
+
+  async listAllSessionDetails(): Promise<SessionState[]> {
+    return this.tutoringFlow.loadAllSessionStates();
+  }
+
+  async generateQuiz(messages: import('./types').TutorMessage[], noteTitle: string): Promise<import('./types').QuizQuestion[]> {
+    return this.tutoringFlow.generateQuiz(messages, noteTitle);
   }
 
   async loadSessionFromHistory(slug: string, sessionId?: string): Promise<void> {

@@ -21,6 +21,8 @@ interface ViewState {
   showHistory: boolean;
   pendingUserText: string;
   revokingMessageIds: string[];
+  hasOpenNote: boolean;
+  showQuizGenerator: boolean;
   [key: string]: unknown;
 }
 
@@ -48,6 +50,8 @@ export class ReactSocraticView extends ItemView {
     showHistory: false,
     pendingUserText: '',
     revokingMessageIds: [],
+    hasOpenNote: false,
+    showQuizGenerator: false,
   };
   private listeners = new Set<() => void>();
 
@@ -187,6 +191,14 @@ export class ReactSocraticView extends ItemView {
 
   setShowHistory(show: boolean): void {
     this.updateState({ showHistory: show });
+  }
+
+  setHasOpenNote(active: boolean): void {
+    this.updateState({ hasOpenNote: active });
+  }
+
+  setShowQuizGenerator(show: boolean): void {
+    this.updateState({ showQuizGenerator: show });
   }
 
   setPendingUserText(text: string): void {

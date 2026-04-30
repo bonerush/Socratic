@@ -10,6 +10,7 @@ export interface TranslationMap {
   welcomeHero: string;
   welcomeHeroActionWord: string;
   welcomeSub: string;
+  welcomeSubReady: string;
   thinking: string;
   selfAssessmentTitle: string;
   selfAssessmentSolid: string;
@@ -100,6 +101,25 @@ export interface TranslationMap {
   explainSelectionPhase: string;
   // Session history
   currentSessionLabel: string;
+  // Quiz generation
+  generateQuizTitle: string;
+  generateQuizDesc: string;
+  selectAll: string;
+  deselectAll: string;
+  invertSelection: string;
+  generateButton: string;
+  regenerateButton: string;
+  noSelectionWarning: string;
+  quizResultTitle: string;
+  sourceLabel: string;
+  questionTypeMultipleChoice: string;
+  questionTypeFillInBlank: string;
+  questionTypeOpenEnded: string;
+  correctAnswerLabel: string;
+  explanationLabel: string;
+  loadingSessions: string;
+  generatingQuiz: string;
+  quizEmptyResult: string;
 }
 
 const en: TranslationMap = {
@@ -112,6 +132,7 @@ const en: TranslationMap = {
   welcomeHero: 'Think,\nbegin with a question.',
   welcomeHeroActionWord: 'question',
   welcomeSub: 'Open a note and begin with a question.',
+  welcomeSubReady: 'Your note is loaded. Click "question" to begin tutoring.',
   thinking: 'Thinking',
   selfAssessmentTitle: 'How well do you feel you understand this concept?',
   selfAssessmentSolid: 'Solid — I could teach it',
@@ -195,6 +216,24 @@ const en: TranslationMap = {
   askAboutSelection: 'Ask about selected text',
   explainSelectionPhase: 'Explaining selection',
   currentSessionLabel: 'Current',
+  generateQuizTitle: 'Generate Quiz',
+  generateQuizDesc: 'Generate test questions from conversation history',
+  selectAll: 'Select All',
+  deselectAll: 'Deselect All',
+  invertSelection: 'Invert Selection',
+  generateButton: 'Generate Quiz',
+  regenerateButton: 'Regenerate',
+  noSelectionWarning: 'Please select at least one conversation',
+  quizResultTitle: 'Generated Quiz',
+  sourceLabel: 'Source',
+  questionTypeMultipleChoice: 'Multiple Choice',
+  questionTypeFillInBlank: 'Fill in the Blank',
+  questionTypeOpenEnded: 'Open Ended',
+  correctAnswerLabel: 'Correct Answer',
+  explanationLabel: 'Explanation',
+  loadingSessions: 'Loading sessions...',
+  generatingQuiz: 'Generating quiz...',
+  quizEmptyResult: 'Failed to generate quiz, please try again',
 };
 
 const zh: TranslationMap = {
@@ -207,6 +246,7 @@ const zh: TranslationMap = {
   welcomeHero: '思考,\n从一个问题开始。',
   welcomeHeroActionWord: '问题',
   welcomeSub: '打开笔记，从一个问题开始。',
+  welcomeSubReady: '笔记已加载，点击"问题"开始辅导。',
   thinking: '思考中',
   selfAssessmentTitle: '你觉得自己对这个概念的掌握程度如何？',
   selfAssessmentSolid: '扎实——我可以教给别人',
@@ -290,6 +330,24 @@ const zh: TranslationMap = {
   askAboutSelection: '询问选中的文本',
   explainSelectionPhase: '解释选文中',
   currentSessionLabel: '当前',
+  generateQuizTitle: '生成测试',
+  generateQuizDesc: '基于历史对话生成测试习题',
+  selectAll: '全选',
+  deselectAll: '取消全选',
+  invertSelection: '反选',
+  generateButton: '生成测试习题',
+  regenerateButton: '重新生成',
+  noSelectionWarning: '请至少选择一段对话',
+  quizResultTitle: '生成的测试习题',
+  sourceLabel: '来源',
+  questionTypeMultipleChoice: '选择题',
+  questionTypeFillInBlank: '填空题',
+  questionTypeOpenEnded: '问答题',
+  correctAnswerLabel: '参考答案',
+  explanationLabel: '解析',
+  loadingSessions: '加载历史会话中...',
+  generatingQuiz: '正在生成习题...',
+  quizEmptyResult: '未能生成习题，请重试',
 };
 
 const allTranslations: Record<Lang, TranslationMap> = { en, zh };

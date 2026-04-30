@@ -142,6 +142,14 @@ export class TutoringFlow {
     return this.sessionManager.listSessions();
   }
 
+  async loadAllSessionStates(): Promise<SessionState[]> {
+    return this.sessionManager.loadAllSessionStates();
+  }
+
+  async generateQuiz(messages: TutorMessage[], noteTitle: string): Promise<import('../types').QuizQuestion[]> {
+    return this.engine.generateQuiz(messages, noteTitle);
+  }
+
   async loadSessionFromHistory(slug: string, sessionId?: string): Promise<void> {
     const view = this.getReactView();
     if (!view) return;

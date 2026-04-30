@@ -7,6 +7,7 @@ import { SessionResume } from './components/SessionResume';
 import { SessionHistory } from './components/SessionHistory';
 import { NoteSwitchResume } from './components/NoteSwitchResume';
 import { EnergyRing } from './components/EnergyRing';
+import { QuizGenerator } from './components/QuizGenerator';
 import type { ReactSocraticView } from '../ReactSocraticView';
 
 interface SocraticAppProps {
@@ -22,7 +23,7 @@ export function SocraticApp({ view }: SocraticAppProps) {
 }
 
 function SocraticAppInner() {
-  const { t, isSessionActive, isProcessing, dialogState, resolveSelfAssessment, resolveSessionResume, showHistory, setShowHistory, onExitToMain } = useSocratic();
+  const { t, isSessionActive, isProcessing, dialogState, resolveSelfAssessment, resolveSessionResume, showHistory, setShowHistory, showQuizGenerator, setShowQuizGenerator, onExitToMain } = useSocratic();
 
   return (
     <div className="socratic-view">
@@ -45,6 +46,21 @@ function SocraticAppInner() {
           >
             {t.exitToMain}
           </button>
+          <span
+            className="socratic-link"
+            onClick={() => setShowQuizGenerator(true)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setShowQuizGenerator(true);
+              }
+            }}
+            title={t.generateQuizTitle}
+          >
+            {t.generateQuizTitle}
+          </span>
           <span
             className="socratic-link"
             onClick={() => setShowHistory(true)}
@@ -92,6 +108,12 @@ function SocraticAppInner() {
       {showHistory && (
         <div className="socratic-dialog-overlay">
           <SessionHistory />
+        </div>
+      )}
+
+      {showQuizGenerator && (
+        <div className="socratic-dialog-overlay">
+          <QuizGenerator />
         </div>
       )}
     </div>

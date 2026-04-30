@@ -1218,3 +1218,255 @@
   text-align: center;
   padding: 8px 12px;
 }
+
+/* ── Quiz Generator ────────────────────────────────────────── */
+
+.socratic-quiz-generator {
+  background: var(--background-primary);
+  border-radius: 14px;
+  padding: 20px;
+  max-width: 560px;
+  width: 100%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+}
+
+.socratic-quiz-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.socratic-quiz-header h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.socratic-quiz-desc {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.socratic-quiz-close {
+  flex-shrink: 0;
+}
+
+.socratic-quiz-toolbar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.socratic-quiz-tree {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  font-size: 12px;
+}
+
+.socratic-quiz-node {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+
+.socratic-quiz-node--note {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.socratic-quiz-node--session {
+  padding-left: 16px;
+  font-size: 12px;
+}
+
+.socratic-quiz-node--message {
+  padding-left: 32px;
+  font-size: 11.5px;
+}
+
+.socratic-quiz-checkbox {
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.socratic-quiz-summary {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.socratic-quiz-details {
+  width: 100%;
+}
+
+.socratic-quiz-summary-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.socratic-quiz-summary-header::-webkit-details-marker {
+  display: none;
+}
+
+.socratic-quiz-count {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin-left: auto;
+}
+
+.socratic-quiz-children {
+  padding-left: 4px;
+}
+
+.socratic-quiz-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid var(--background-modifier-border);
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+
+.socratic-quiz-selection-count {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.socratic-quiz-loading,
+.socratic-quiz-empty {
+  text-align: center;
+  padding: 24px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.socratic-quiz-generating {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Quiz Result ───────────────────────────────────────────── */
+
+.socratic-quiz-result {
+  background: var(--background-primary);
+  border-radius: 14px;
+  padding: 20px;
+  max-width: 560px;
+  width: 100%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+}
+
+.socratic-quiz-result__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.socratic-quiz-result__header h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.socratic-quiz-result__count {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.socratic-quiz-result__body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.socratic-quiz-result__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid var(--background-modifier-border);
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+
+.socratic-quiz-question {
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding: 14px 0;
+}
+
+.socratic-quiz-question:last-child {
+  border-bottom: none;
+}
+
+.socratic-quiz-question__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.socratic-quiz-question__index {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.socratic-quiz-question__type {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--background-secondary);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.socratic-quiz-question__prompt {
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+
+.socratic-quiz-question__options {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.socratic-quiz-question__option {
+  font-size: 13px;
+  padding: 6px 10px;
+  background: var(--background-secondary);
+  border-radius: 6px;
+}
+
+.socratic-quiz-question__answer,
+.socratic-quiz-question__explanation,
+.socratic-quiz-question__source {
+  font-size: 12.5px;
+  margin-top: 6px;
+  color: var(--text-muted);
+}
+
+.socratic-quiz-question__source {
+  font-size: 11.5px;
+  margin-top: 8px;
+  font-style: italic;
+}
