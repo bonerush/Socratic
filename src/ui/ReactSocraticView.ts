@@ -73,10 +73,11 @@ export class ReactSocraticView extends ItemView {
     return 'brain' as const;
   }
 
-  async onOpen(): Promise<void> {
+  onOpen(): Promise<void> {
     // Mount React app onto the ItemView's content element (official Obsidian pattern)
     this.root = createRoot(this.contentEl);
     this.renderApp();
+    return Promise.resolve();
   }
 
   private renderApp(): void {
@@ -88,9 +89,10 @@ export class ReactSocraticView extends ItemView {
     );
   }
 
-  async onClose(): Promise<void> {
+  onClose(): Promise<void> {
     this.root?.unmount();
     this.root = null;
+    return Promise.resolve();
   }
 
   // --- External store API for useSyncExternalStore ---

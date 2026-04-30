@@ -52,8 +52,7 @@ export function Composer() {
     const el = textareaRef.current;
     if (!el) return;
     // Reset height to measure natural scrollHeight, then cap at 200px.
-    // eslint-disable-next-line obsidianmd/no-static-styles-assignment
-    el.style.height = 'auto';
+    el.style.removeProperty('height');
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   };
 

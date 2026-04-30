@@ -62,7 +62,7 @@ export class TutoringFlow {
   // ── Public API ─────────────────────────────────────────────────────────────
 
   async startTutoring(): Promise<void> {
-    const prepared = await this.prepareTutoring();
+    const prepared = this.prepareTutoring();
     if (!prepared) return;
     const { view, note, slug } = prepared;
 
@@ -92,7 +92,7 @@ export class TutoringFlow {
   }
 
   async startTutoringWithSelection(selection: string): Promise<void> {
-    const prepared = await this.prepareTutoring();
+    const prepared = this.prepareTutoring();
     if (!prepared) return;
     const { view, note, slug } = prepared;
 
@@ -159,7 +159,7 @@ export class TutoringFlow {
       return;
     }
     this.session = loaded;
-    await this.restoreSessionView(loaded, view);
+    this.restoreSessionView(loaded, view);
     view.updateProgress(this.session);
   }
 
@@ -243,7 +243,7 @@ export class TutoringFlow {
     const view = this.getReactView();
     if (!view) return;
 
-    await this.restoreSessionView(this.session, view);
+    this.restoreSessionView(this.session, view);
 
     try {
       const needsReview = this.session.concepts.filter(
@@ -635,7 +635,7 @@ export class TutoringFlow {
     }
   }
 
-  private async prepareTutoring() {
+  private prepareTutoring() {
     const view = this.getReactView();
     if (!view) {
       new Notice(this.t.noPanel);
@@ -664,7 +664,7 @@ export class TutoringFlow {
     return { view, note, slug, lang };
   }
 
-  private async restoreSessionView(session: SessionState, view: ReactSocraticView): Promise<void> {
+  private restoreSessionView(session: SessionState, view: ReactSocraticView) {
     const slug = session.noteSlug;
     this.llmService.setSessionSlug(slug);
     this.engine.setSessionSlug(slug);

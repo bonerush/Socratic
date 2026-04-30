@@ -39,13 +39,13 @@ export default class SocraticNoteTutorPlugin extends Plugin {
 
     this.registerView(VIEW_TYPE_SOCRATIC, (leaf) => new ReactSocraticView(leaf, this));
 
-    this.addRibbonIcon('brain', 'Open socratic tutor', () => {
+    this.addRibbonIcon('brain', 'Open tutor', () => {
       void this.activateView();
     });
 
     this.addCommand({
       id: 'open-socratic-tutor',
-      name: 'Open socratic tutor',
+      name: 'Open tutor',
       callback: () => void this.activateView(),
     });
 
