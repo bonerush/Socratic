@@ -357,3 +357,370 @@ npm run version
 ---
 
 > **提示**：苏格拉底式学习的核心在于「主动思考」。插件设计的初衷不是替代你的学习过程，而是像一位耐心的导师，通过提问帮助你发现自己尚未意识到的理解盲区。请享受这段探索之旅！
+
+---
+
+# Socratic Note Tutor (English)
+
+> An Obsidian plugin that acts as a Socratic AI tutor, leveraging Large Language Models (LLM) and Bloom's 2-Sigma teaching method to guide you through deep learning via heuristic questioning.
+
+---
+
+## Table of Contents
+
+- [Introduction](#introduction)
+- [Core Features](#core-features)
+- [Project Structure](#project-structure)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Architecture](#architecture)
+- [Development](#development)
+- [License](#license)
+
+---
+
+## Introduction
+
+**Socratic Note Tutor** is an Obsidian plugin that turns your notes into personalized Socratic tutoring sessions. Instead of giving answers directly, the plugin asks carefully designed questions to help you discover knowledge gaps, clarify concept relationships, and ultimately achieve true **Mastery**.
+
+The plugin deeply integrates the following educational principles:
+
+- **Socratic Questioning**: Ask, don't tell — stimulate active thinking
+- **Bloom's 2-Sigma Effect**: One-on-one targeted tutoring that significantly improves learning outcomes
+- **Mastery Learning**: Each concept must reach a set threshold to be considered mastered
+- **Spaced Repetition**: Automatic review scheduling to combat the forgetting curve
+
+<table border="0">
+  <tr>
+    <td><img src="figure/main-view-dark.png" width="300"></td>
+    <td><img src="figure/main-view-light.png" width="300"></td>
+  </tr>
+</table>
+
+You can also let Socrates give you choices. The right images show the settings panel.
+<table border="0">
+  <tr>
+    <td><img src="figure/selection.png" width="300"></td>
+    <td><img src="figure/setting.png" width="300"></td>
+  </tr>
+</table>
+
+---
+
+## Core Features
+
+### 1. Intelligent Concept Extraction & Knowledge Graph
+Open any note and click "Start Tutoring". The plugin automatically analyzes the note content, extracts 5-15 core concepts, sorts them by dependency, and generates a visual learning roadmap. Roadmaps are stored under the `.socratic-sessions` folder in your vault.
+
+![alt text](figure/roadmap.png)
+
+### 2. Socratic Dialogue Teaching
+For each concept, the AI tutor guides you through multi-round conversations:
+- **Diagnostic Phase**: First understands your existing knowledge of the topic
+- **Teaching Phase**: Gradually guides through open-ended questions or multiple-choice questions
+- **Mastery Detection**: Automatically evaluates mastery after each round (4-dimension assessment)
+- **Practice Tasks**: Assigns application-oriented exercises after mastery is achieved
+
+### 3. Four-Dimension Mastery Assessment
+The system evaluates your mastery of a concept from the following four dimensions:
+- **Correctness**: Whether the answer is accurate
+- **Explanation Depth**: Whether you can clearly explain in your own words
+- **Novel Application**: Whether you can transfer knowledge to new scenarios
+- **Concept Discrimination**: Whether you can distinguish between similar concepts
+
+The default mastery threshold is **80%**, which can be adjusted in settings.
+
+### 4. Spaced Repetition Review
+For mastered concepts, the system automatically schedules reviews based on the Ebbinghaus forgetting curve:
+- First review 1 day after initial mastery
+- Each correct answer doubles the review interval
+- Wrong answers shorten the interval for targeted reinforcement
+
+### 5. Session History & Resume Learning
+All tutoring sessions are automatically saved locally. You can:
+- View historical sessions for any note at any time
+- When switching notes, the plugin automatically detects unfinished sessions and asks whether to continue or restart
+- After session completion, a learning summary report is automatically generated
+
+### 6. Learner Profile
+The plugin tracks your learning trajectory over time to build a personalized profile:
+- Strong and weak concept domains
+- Common cognitive misconception patterns
+- Self-assessment calibration history
+- Long-term memory retrieval
+
+### 7. Multi-language Support
+Built-in bilingual interface (Chinese and English), supporting:
+- Manual language switching
+- Automatic language detection based on note content
+- The entire tutoring process (including AI questions) uses the corresponding language
+
+### 8. Selected Text Questioning
+Select any text in a note, right-click and choose "Ask Selected Text" to get targeted tutoring on that specific excerpt without reading the entire note.
+
+### 9. Intelligent Quiz Generation
+Based on your historical tutoring sessions, the AI can automatically generate targeted quiz questions to help you verify learning outcomes:
+- **Multi-source Selection**: Freely combine materials from any note, any session, or even any single message
+- **Tree Selector**: Browse history by "Note → Session → Message" three-level structure
+- **Select All Shortcut**: After expanding a level, click "Select All" to select all content under that level with one click
+- **Smart Question Generation**: AI generates multiple-choice, fill-in-the-blank, and open-ended questions based on selected dialogue content, with answer explanations
+
+### 10. Debug Tracing
+After enabling debug mode, the plugin will record every LLM call, engine phase switch, and prompt content in JSONL format to a specified directory, facilitating troubleshooting or prompt optimization.
+
+---
+
+## Project Structure
+
+```
+.
+├── src/
+│   ├── main.ts                 # Plugin entry, lifecycle management
+│   ├── types.ts                # Core type definitions (concepts, sessions, settings, etc.)
+│   ├── settings.ts             # Plugin settings panel
+│   ├── templates.ts            # Learning roadmap & summary report HTML templates
+│   ├── core/
+│   │   └── TutoringFlow.ts     # Tutoring flow orchestration (session lifecycle)
+│   ├── engine/
+│   │   ├── SocraticEngine.ts   # Socratic engine (dialogue strategy, phase management)
+│   │   ├── ResponseParser.ts   # LLM response parser
+│   │   └── ResponseHealer.ts   # Response healing (empty content, format error fault tolerance)
+│   ├── llm/
+│   │   ├── LLMService.ts       # LLM API call service (OpenAI compatible)
+│   │   ├── PromptBuilder.ts    # Prompt builder
+│   │   └── tools.ts            # Function Calling tool definitions
+│   ├── session/
+│   │   ├── SessionManager.ts   # Session persistence management
+│   │   └── ...                 # Memory retrieval, learner profile, etc.
+│   ├── ui/
+│   │   ├── ReactSocraticView.ts # Obsidian View wrapper
+│   │   └── react/              # React UI components
+│   │       ├── SocraticApp.tsx
+│   │       ├── SocraticContext.tsx
+│   │       └── components/     # Message bubbles, welcome screen, history, etc.
+│   ├── i18n/
+│   │   └── translations.ts     # Chinese-English translation table
+│   ├── utils/                  # General utility functions
+│   ├── debug/                  # Debug tracer
+│   └── memory/                 # Memory system
+├── manifest.json               # Obsidian plugin manifest
+├── styles.css                  # Plugin styles
+├── esbuild.config.mjs          # Build configuration
+├── package.json
+├── tsconfig.json
+└── README.md
+```
+
+---
+
+## Installation
+
+### Method 1: Install via GitHub Release (Recommended)
+
+1. Go to the project's [GitHub Releases](https://github.com/bonerush/Socratic/releases) page
+2. In the latest release, download the following three files from the "Assets" section at the bottom:
+   - `main.js`
+   - `manifest.json`
+   - `styles.css`
+3. Create a folder in your Obsidian vault: `.obsidian/plugins/socratic-note-tutor/`
+4. Copy the downloaded three files into that folder
+5. Restart Obsidian, go to "Settings → Community Plugins", turn off "Safe Mode", and enable **Socratic Note Tutor**
+
+### Method 2: Install via BRAT
+
+1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin
+2. Open BRAT settings, click "Add Beta plugin"
+3. Enter the repository URL: `bonerush/Socratic`
+4. Click "Add Plugin", BRAT will automatically download and install
+
+### Method 3: Build from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/bonerush/Socratic.git
+cd Socratic
+
+# Install dependencies
+npm install
+
+# Development mode (watch file changes and auto-compile)
+npm run dev
+
+# Production build
+npm run build
+```
+
+After building, copy the generated `main.js`, `manifest.json`, and `styles.css` to your Obsidian plugin directory.
+
+---
+
+## Usage
+
+### Quick Start
+
+1. **Configure API**: Before first use, go to "Settings → Socratic Note Tutor Settings" and fill in your LLM API address and key
+   - Supports DeepSeek, OpenAI, Anthropic, and any provider compatible with the OpenAI API format
+   - Default model is `deepseek-v4-flash`, which can be changed as needed
+
+2. **Open Tutoring Panel**:
+   - Click the **brain icon** (🧠) in the left sidebar
+   - Or use the command palette (Cmd/Ctrl + P) and search for "Open Socratic Tutor"
+
+3. **Start Tutoring**:
+   - Open any note
+   - Click the "Start Tutoring" button
+   - The AI will first ask diagnostic questions, then extract concepts and begin guided learning
+
+4. **Answer Questions**:
+   - Enter your thoughts in the input box
+   - If you encounter multiple-choice questions, click the option
+   - After each round, the system evaluates your mastery level
+   - If you change your mind after sending, press **Ctrl+C** during the AI's response to retract that message
+
+### Common Operations
+
+| Operation | Method |
+|-----------|--------|
+| Start tutoring current note | Click "Start Tutoring" or use command palette |
+| Ask about selected text | Select text → Right-click "Ask Selected Text" |
+| View learning roadmap | Click "View Roadmap" (generated during session) |
+| View session history | Click "Session History" in the upper right |
+| Generate quiz questions | Click "Generate Quiz" to select historical dialogue for quiz generation |
+| New session | Click "New Session" to clear current progress |
+| Return to main screen | Click "Return to Main Screen" to end current session |
+| Retract message | Press **Ctrl+C** during AI thinking to cancel and retract the last user message |
+
+### Generate Quiz Questions
+
+1. **Open Generator**: Click the "Generate Quiz" button on the main screen
+2. **Select Materials**: Browse history in the pop-up tree panel
+   - First level: **Notes** — all historical sessions grouped by note name
+   - Second level: **Sessions** — timestamps of each tutoring session
+   - Third level: **Messages** — specific dialogue content in that session
+3. **Check Content**:
+   - Click the expand/collapse button before a node to browse sub-level content
+   - Check the checkbox to select nodes as quiz material
+   - After expanding a level, click "Select All" to select all content under that level with one click
+4. **Start Generation**: Click "Generate Quiz", AI will automatically generate questions based on selected dialogue content
+5. **View Results**: After generation is complete, you can view the quiz list, each question comes with reference answers and explanations
+
+### Automatic Note Switch Detection
+
+When you switch to another note with an unfinished session during learning, the plugin will automatically pop up and ask:
+- **Continue**: Resume previous progress
+- **Restart**: Clear history and start from scratch
+- **Cancel**: Keep current state
+
+---
+
+## Configuration
+
+Go to "Settings → Socratic Note Tutor Settings" to configure the following options:
+
+| Configuration Item | Description | Default Value |
+|--------------------|-------------|---------------|
+| API Endpoint | LLM service API endpoint | `https://api.deepseek.com/chat/completions` |
+| API Key | Your API Key | Empty |
+| Model | Model name to use | `deepseek-v4-flash` |
+| Disable Tool Calling | Enable if API proxy doesn't support function calling | Off |
+| Language Preference | Interface and tutoring language (Auto/English/Chinese) | Auto |
+| Session Storage Path | Local storage path for session data | `.socratic-sessions` under vault root |
+| Mastery Threshold | Minimum score required to mark as mastered (50-100) | 80 |
+| Max Concepts Per Session | Maximum number of concepts extracted from a single note (3-30) | 15 |
+| Debug Mode | Enable tracking of LLM calls and engine steps | Off |
+| Debug Trace Path | Trace file storage directory | `sessionStoragePath/debug` |
+
+---
+
+## Architecture
+
+### Data Flow
+
+```
+Obsidian Note
+     │
+     ▼
+┌─────────────────┐
+│  TutoringFlow   │  ← Session lifecycle management (start/resume/end)
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ SocraticEngine  │  ← Dialogue strategy engine (phase switching, prompt assembly)
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐     ┌─────────────┐
+│  LLMService     │────▶│   LLM API   │
+│ (OpenAI Compatible)   │◄────│             │
+└─────────────────┘     └─────────────┘
+         │
+         ▼
+┌─────────────────┐
+│ SessionManager  │  ← Local persistence (sessions, roadmaps, learner profiles)
+└─────────────────┘
+```
+
+### Tutoring Phase State Machine
+
+```
+[Diagnosis] ──▶ [Concept Extraction] ──▶ [Teaching] ──▶ [Mastery Check] ──▶ [Practice]
+   ▲          │              │           │
+   └──────────┴──────────────┴───────────┘ (Loops if not completed)
+```
+
+### Core Design Principles
+
+- **Immutability**: All state updates return new objects, avoiding side effects
+- **Small files, high cohesion**: Modules split by functional domain, single file not exceeding 800 lines
+- **Explicit error handling**: Every layer has try-catch, exceptions are not hidden from users
+- **LLM fault tolerance**: Empty content, format errors, and tool call failures all have fallback strategies
+
+---
+
+## Development
+
+```bash
+# Install dependencies
+npm install
+
+# Development mode (watch + hot compile)
+npm run dev
+
+# Production build (type check + minify)
+npm run build
+
+# Code linting
+npm run lint
+
+# Version bump (auto-update manifest.json and versions.json)
+npm run version
+```
+
+### Tech Stack
+
+- **TypeScript** + **React 19** (UI layer)
+- **esbuild** (bundling, supports JSX)
+- **Obsidian API** (plugin lifecycle, file system, editor interaction)
+- **Vitest** (unit testing)
+
+---
+
+## License
+
+This project uses the MIT license and can be freely used, modified, and distributed.
+
+## Acknowledgements
+
+Thanks to everyone who supported this project, especially the projects that inspired me. If possible, please give them a star too!
+
+🔗 https://github.com/sanyuan0704/sanyuan-skills
+
+🔗 https://github.com/claude-code-best/claude-code.git
+
+Special note: the tool used for this project is ccb, which is the second project listed above.
+
+---
+
+> **Tip**: The core of Socratic learning lies in "active thinking". The plugin is designed not to replace your learning process, but to act like a patient tutor, helping you discover understanding blind spots you haven't yet realized through questioning. Enjoy this journey of exploration!
