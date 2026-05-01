@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useCallback } from 'react';
+import { Notice } from 'obsidian';
 import { useSocratic } from '../SocraticContext';
+import { buildQuizMarkdown } from '../../../utils/quizExport';
 import type { QuizSet, QuizQuestion } from '../../../types';
 
 interface QuizResultProps {
@@ -50,7 +52,20 @@ function QuestionCard({ question, index }: { question: QuizQuestion; index: numb
 }
 
 export function QuizResult({ quizSet, onBack, onClose }: QuizResultProps): React.ReactElement {
-  const { t } = useSocratic();
+  const { t, app } = useSocratic();
+
+  const handleExport = useCallback(async () => {
+    try {
+      const md = buildQuizMarkdown(quizSet);
+      const safeTitle = quizSet.title.replace(/[/\\:*?"<>|]/g, '_');
+      const ts = new Date(quizSet.generatedAt).toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const fileName = `Quiz-${safeTitle}-${ts}.md`;
+      await app.vault.create(fileName, md);
+      new Notice(t.exportMarkdownSuccess);
+    } catch {
+      new Notice(t.exportMarkdownFail);
+    }
+  }, [quizSet, app, t]);
 
   return (
     <div className="socratic-quiz-result">
@@ -70,6 +85,9 @@ export function QuizResult({ quizSet, onBack, onClose }: QuizResultProps): React
       <div className="socratic-quiz-result__footer">
         <button className="socratic-btn socratic-btn-primary" onClick={onBack}>
           {t.regenerateButton}
+        </button>
+        <button className="socratic-btn" onClick={() => void handleExport()}>
+          {t.exportMarkdownButton}
         </button>
         <button className="socratic-btn socratic-btn-ghost" onClick={onClose}>
           {t.closeLabel}

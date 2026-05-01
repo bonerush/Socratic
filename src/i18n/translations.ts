@@ -120,6 +120,9 @@ export interface TranslationMap {
   loadingSessions: string;
   generatingQuiz: string;
   quizEmptyResult: string;
+  exportMarkdownButton: string;
+  exportMarkdownSuccess: string;
+  exportMarkdownFail: string;
 }
 
 const en: TranslationMap = {
@@ -234,6 +237,9 @@ const en: TranslationMap = {
   loadingSessions: 'Loading sessions...',
   generatingQuiz: 'Generating quiz...',
   quizEmptyResult: 'Failed to generate quiz, please try again',
+  exportMarkdownButton: 'Export Markdown',
+  exportMarkdownSuccess: 'Exported!',
+  exportMarkdownFail: 'Export failed',
 };
 
 const zh: TranslationMap = {
@@ -348,6 +354,9 @@ const zh: TranslationMap = {
   loadingSessions: '加载历史会话中...',
   generatingQuiz: '正在生成习题...',
   quizEmptyResult: '未能生成习题，请重试',
+  exportMarkdownButton: '导出为 Markdown',
+  exportMarkdownSuccess: '已导出！',
+  exportMarkdownFail: '导出失败',
 };
 
 const allTranslations: Record<Lang, TranslationMap> = { en, zh };

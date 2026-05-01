@@ -238,6 +238,7 @@ npm run build
    - 展开某一级后点击「全选」，可一键选中该层级下所有内容
 4. **开始生成**：点击「生成测试习题」，AI 会基于选中的对话内容自动出题
 5. **查看结果**：生成完成后即可查看习题列表，每道题均附带参考答案与解析
+6. **导出为 Markdown**：点击「导出为 Markdown」按钮，可将试题一键保存为 `.md` 文件到 vault 根目录
 
 ### 笔记切换自动检测
 
@@ -604,6 +605,7 @@ After building, copy the generated `main.js`, `manifest.json`, and `styles.css` 
    - After expanding a level, click "Select All" to select all content under that level with one click
 4. **Start Generation**: Click "Generate Quiz", AI will automatically generate questions based on selected dialogue content
 5. **View Results**: After generation is complete, you can view the quiz list, each question comes with reference answers and explanations
+6. **Export as Markdown**: Click the "Export Markdown" button to save the quiz as a `.md` file in your vault root
 
 ### Automatic Note Switch Detection
 
